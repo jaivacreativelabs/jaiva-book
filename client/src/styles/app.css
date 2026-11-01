@@ -3750,6 +3750,47 @@ html.app-open body {
   font-size: 1.15rem;
   font-weight: 800;
 }
+
+/* ============ Served Orders ============ */
+.served-summary {
+  margin: 0 0 12px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+.served-ticket {
+  border-left: 4px solid var(--color-border-strong);
+}
+.served-ticket.parcel {
+  border-left-color: var(--color-accent-purple);
+}
+.waiter-where.parcel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-accent-purple);
+}
+.served-at {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.served-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+.served-meta strong {
+  color: var(--color-text);
+}
 .kds-ticket-actions {
   display: flex;
   align-items: center;
@@ -3896,7 +3937,7 @@ html.app-open body {
 }
 .dish-note.add {
   border-style: dashed;
-  border-color: var(--color-border-strong, var(--color-border));
+  border-color: var(--color-border-strong);
   background: none;
   color: var(--color-text-muted);
 }

@@ -9,6 +9,7 @@ import { BillingPage } from './pages/restaurant/BillingPage';
 import { ExpensesPage } from './pages/restaurant/ExpensesPage';
 import { MenuPage } from './pages/restaurant/MenuPage';
 import { PrintReceiptPage } from './pages/restaurant/PrintReceiptPage';
+import { ServedPage } from './pages/restaurant/ServedPage';
 import { KitchenPage, PrintKitchenTicketPage } from './pages/restaurant/KitchenPage';
 import { WaiterPage } from './pages/restaurant/WaiterPage';
 import { TablesPage, WaiterTablesPage } from './pages/restaurant/TablesPage';
@@ -24,6 +25,7 @@ const RestaurantDetailPage = named(() => import('./pages/admin/RestaurantDetailP
 const AdminsPage = named(() => import('./pages/admin/AdminsPage'), 'AdminsPage');
 const AdminMenuPage = named(() => import('./pages/admin/AdminMenuPage'), 'AdminMenuPage');
 const AdminTransactionsPage = named(() => import('./pages/admin/AdminTransactionsPage'), 'AdminTransactionsPage');
+const AdminServedPage = named(() => import('./pages/admin/AdminServedPage'), 'AdminServedPage');
 const AdminExpensesPage = named(() => import('./pages/admin/AdminExpensesPage'), 'AdminExpensesPage');
 const ReportsPage = named(() => import('./pages/admin/ReportsPage'), 'ReportsPage');
 const AnalyticsPage = named(() => import('./pages/admin/AnalyticsPage'), 'AnalyticsPage');
@@ -91,6 +93,15 @@ export function App() {
       </Route>
       <Route
         element={
+          <RequireRole roles={['RESTAURANT_ADMIN', 'KITCHEN', 'WAITER']}>
+            <AppLayout />
+          </RequireRole>
+        }
+      >
+        <Route path="/served" element={<ServedPage />} />
+      </Route>
+      <Route
+        element={
           <RequireRole roles={['RESTAURANT_ADMIN', 'WAITER']}>
             <AppLayout />
           </RequireRole>
@@ -121,6 +132,7 @@ export function App() {
         <Route path="users" element={<AdminsPage />} />
         <Route path="menu" element={<AdminMenuPage />} />
         <Route path="transactions" element={<AdminTransactionsPage />} />
+        <Route path="served" element={<AdminServedPage />} />
         <Route path="expenses" element={<AdminExpensesPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="analytics" element={<AnalyticsPage />} />

@@ -195,6 +195,8 @@ export function createApiRouter(): Router {
   // Ready parcels and handing them over: the counter's job (admins only, checked in the service)
   kitchenRouter.get('/parcels', ops.readyParcels);
   kitchenRouter.post('/tickets/:id/handed-over', ops.handOverParcel);
+  // Served orders of a day: every login of the branch (waiters through /waiter/served)
+  kitchenRouter.get('/served', ops.servedTickets);
   api.use('/kitchen', kitchenRouter);
 
   // ---- Waiter board (food the kitchen marked Ready) ----
@@ -202,6 +204,7 @@ export function createApiRouter(): Router {
   waiterRouter.use(authenticate, requireBranchScope);
   waiterRouter.get('/tickets', ops.waiterBoard);
   waiterRouter.post('/tickets/:id/served', ops.serveTicket);
+  waiterRouter.get('/served', ops.servedTickets);
   api.use('/waiter', waiterRouter);
 
   // ---- Transactions (role-filtered in the service) ----

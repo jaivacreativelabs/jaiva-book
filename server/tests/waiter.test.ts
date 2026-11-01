@@ -46,6 +46,10 @@ describe('waiter board', () => {
     expect(ok<Ticket[]>(await waiter.get('/api/v1/waiter/tickets'))).toEqual([]);
     // A second tap (or another waiter) cannot serve it again.
     expect((await waiter.post(`/api/v1/waiter/tickets/${t.id}/served`)).status).toBe(409);
+
+    // It now shows under Served, with who served it.
+    const done = ok<Ticket[]>(await waiter.get('/api/v1/waiter/served'));
+    expect(done.map((r) => [r.id, r.tableLabel, r.servedByName])).toEqual([[t.id, 'T1', 'Muthu']]);
   });
 
   it('parcels are not on the waiter board and a waiter cannot hand one over', async () => {
@@ -71,7 +75,7 @@ describe('waiter board', () => {
   });
 
   it('cannot see another branch', async () => {
-    for (const url of ['/api/v1/waiter/tickets', '/api/v1/tables', '/api/v1/menu/items']) {
+    for (const url of ['/api/v1/waiter/tickets', '/api/v1/waiter/served', '/api/v1/tables', '/api/v1/menu/items']) {
       expect((await waiter.useBranch(w.branchA2).get(url)).status, url).toBe(403);
     }
     waiter.useBranch(w.branchA1);

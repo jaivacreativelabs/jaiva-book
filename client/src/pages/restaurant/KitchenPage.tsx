@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChefHat, Package, Printer, Star, Timer } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { StaffTabs } from '../../components/StaffTabs';
 import { Empty, Loading, PageHeader, Spinner } from '../../components/ui';
 import { ApiError, api, errorMessage } from '../../services/api';
 import { useAuth } from '../../store/auth';
@@ -150,6 +151,7 @@ export function KitchenPage() {
   const tickets = board.data ?? [];
   return (
     <div className="page kds-page">
+      <StaffTabs />
       <PageHeader title="Kitchen Display" subtitle="Live order tickets · New → Preparing → Ready" />
       {board.isLoading ? (
         <Loading label="Loading tickets…" />

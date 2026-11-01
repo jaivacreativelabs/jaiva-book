@@ -240,6 +240,14 @@ describe('parcels', () => {
     expect(ok<Ticket[]>(await w.adminA1.get('/api/v1/kitchen/parcels'))).toEqual([]);
     expect((await board(w.adminA1)).some((t) => t.id === parcel.id)).toBe(false);
     expect((await w.adminA1.post(`/api/v1/kitchen/tickets/${parcel.id}/handed-over`)).status).toBe(409);
+
+    // It now shows under Served, for the counter and the kitchen alike – latest first.
+    for (const client of [w.adminA1, cook]) {
+      const served = ok<Ticket[]>(await client.get('/api/v1/kitchen/served'));
+      expect(served[0]).toMatchObject({ id: parcel.id, status: 'SERVED', servedByName: 'a1@test.local' });
+    }
+    expect(ok<Ticket[]>(await w.adminA1.get('/api/v1/kitchen/served?date=2020-01-01'))).toEqual([]);
+    expect((await w.adminA1.get('/api/v1/kitchen/served?date=today')).status).toBe(400);
   });
 
   it('a table order is served, not handed over', async () => {

@@ -2,6 +2,7 @@ import {
   Building2,
   ChartColumn,
   ChartLine,
+  CheckCheck,
   ChefHat,
   ChevronDown,
   CircleCheck,
@@ -57,6 +58,8 @@ const RESTAURANT_NAV: NavItem[] = [
 const KITCHEN_NAV: NavItem = { to: '/kitchen', label: 'Kitchen', icon: ChefHat };
 // Food the kitchen marked Ready (also needs the Kitchen Display).
 const WAITER_NAV: NavItem = { to: '/waiter', label: 'Ready to Serve', icon: ConciergeBell, end: true };
+// Orders served at the table or handed over at the counter (every login of the branch).
+const SERVED_NAV: NavItem = { to: '/served', label: 'Served', icon: CheckCheck };
 // Waiter logins: taking table orders (they never bill).
 const TAKE_ORDER_NAV: NavItem = { to: '/waiter/order', label: 'Take Order', icon: ClipboardList };
 
@@ -65,6 +68,7 @@ const ADMIN_NAV: NavItem[] = [
   { to: '/admin/users', label: 'Admins', icon: Users },
   { to: '/admin/menu', label: 'Menu', icon: Utensils },
   { to: '/admin/transactions', label: 'Transactions', icon: FileText },
+  { to: '/admin/served', label: 'Served Orders', icon: CheckCheck },
   { to: '/admin/expenses', label: 'Expenses', icon: Wallet },
   { to: '/admin/reports', label: 'Reports', icon: ChartLine },
   { to: '/admin/analytics', label: 'Analytics', icon: ChartColumn },
@@ -185,11 +189,11 @@ export function AppLayout() {
   const nav = isSuper
     ? ADMIN_NAV
     : isKitchen
-      ? [KITCHEN_NAV]
+      ? [KITCHEN_NAV, SERVED_NAV]
       : isWaiter
-        ? [TAKE_ORDER_NAV, WAITER_NAV]
+        ? [TAKE_ORDER_NAV, WAITER_NAV, SERVED_NAV]
         : activeBranch?.kitchenDisplay
-          ? [...RESTAURANT_NAV, KITCHEN_NAV, WAITER_NAV]
+          ? [...RESTAURANT_NAV, KITCHEN_NAV, WAITER_NAV, SERVED_NAV]
           : RESTAURANT_NAV;
   // Phones: Restaurant Admins get a bottom tab bar, the Super Admin a slide-in menu; a Kitchen
   // login has a single page and needs neither.

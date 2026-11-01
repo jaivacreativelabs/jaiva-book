@@ -376,6 +376,11 @@ export const transactionQuerySchema = z.object({
   branchId: objectIdSchema.optional(),
 });
 
+/** Served orders of one day (restaurant time zone); today when left out. */
+export const servedQuerySchema = z.object({
+  date: dateStringSchema.optional(),
+});
+
 export const analyticsQuerySchema = z.object({
   from: dateStringSchema,
   to: dateStringSchema,

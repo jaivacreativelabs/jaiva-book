@@ -12,7 +12,7 @@ import { env } from '../config/env.js';
 import type { AuthUser } from '../middleware/auth.js';
 import type { BranchScope } from '../middleware/scope.js';
 import { DraftModel, KitchenTicketModel, nextSequence, TableModel, TransactionModel, type Draft, type KitchenTicket } from '../models/index.js';
-import { todayIn } from '../utils/dates.js';
+import { dayRange, todayIn } from '../utils/dates.js';
 import { AppError, conflict, forbidden, notFound } from '../utils/errors.js';
 import { assertAdmin } from '../utils/roles.js';
 import { toObjectId } from '../utils/validate.js';
@@ -136,6 +136,20 @@ export async function listBoard(scope: BranchScope): Promise<KitchenTicketDTO[]>
   assertKitchenOn(scope);
   const rows = await KitchenTicketModel.find({ branchId: scope.branch._id, status: { $in: KITCHEN_BOARD_STATUSES } })
     .sort({ priority: -1, createdAt: 1 })
+    .limit(500)
+    .lean<TicketLean[]>();
+  return rows.map(toKitchenTicketDTO);
+}
+
+/**
+ * Served orders: tickets served at a table or handed over at the counter on one day (today by
+ * default), latest first. Works even after the branch switches the board off.
+ */
+export async function listServed(scope: BranchScope, date?: string): Promise<KitchenTicketDTO[]> {
+  const day = date ?? todayIn(env.APP_TIMEZONE);
+  const { start, end } = dayRange(day, day, env.APP_TIMEZONE);
+  const rows = await KitchenTicketModel.find({ branchId: scope.branch._id, status: 'SERVED', statusAt: { $gte: start, $lt: end } })
+    .sort({ statusAt: -1 })
     .limit(500)
     .lean<TicketLean[]>();
   return rows.map(toKitchenTicketDTO);

@@ -12,7 +12,7 @@ import { ApiError, api, errorMessage } from '../../services/api';
 import { useAuth } from '../../store/auth';
 import { useToast } from '../../store/toast';
 import { cx, formatDateTime } from '../../utils/format';
-import { WaiterTabs } from '../../components/WaiterTabs';
+import { StaffTabs } from '../../components/StaffTabs';
 
 const boardKey = (branchId: string) => ['waiter', branchId] as const;
 
@@ -101,7 +101,7 @@ export function WaiterPage() {
   const tickets = board.data ?? [];
   return (
     <div className="page">
-      <WaiterTabs />
+      <StaffTabs />
       <PageHeader title="Ready to Serve" subtitle="Food the kitchen has marked Ready · tap Served when it reaches the table" />
       {board.isLoading ? (
         <Loading label="Loading…" />

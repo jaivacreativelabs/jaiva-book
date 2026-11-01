@@ -12,6 +12,7 @@ import {
   kitchenSendSchema,
   mergeGroupSchema,
   moveGroupSchema,
+  servedQuerySchema,
   splitGroupSchema,
   tableCreateSchema,
   tableUpdateSchema,
@@ -120,6 +121,10 @@ export const readyParcels = async (req: Request, res: Response) => {
 };
 export const handOverParcel = async (req: Request, res: Response) => {
   res.json({ data: await kitchen.handOverParcel(currentUser(req), getBranchScope(req), id(req)) });
+};
+export const servedTickets = async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ data: await kitchen.listServed(getBranchScope(req), parse(servedQuerySchema, req.query).date) });
 };
 export const kitchenTicketPriority = async (req: Request, res: Response) => {
   res.json({ data: await kitchen.setTicketPriority(getBranchScope(req), id(req), parse(kitchenPrioritySchema, req.body).priority) });

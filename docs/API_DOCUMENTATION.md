@@ -161,6 +161,7 @@ draft containing an item that became unavailable cannot be finalised until it is
 | GET | `/kitchen/tickets/:id` | one ticket (kitchen slip printing; also works after it was served) |
 | POST | `/kitchen/tickets/:id/advance` | `{ from }` – one step on (READY → SERVED leaves the board). 409 `CONFLICT` with `details.current` if another screen moved it first |
 | POST | `/kitchen/tickets/:id/priority` | `{ priority: boolean }` |
+| GET | `/kitchen/served?date=YYYY-MM-DD` | Served Orders: tickets served at a table or handed over at the counter on that day (restaurant time zone; today when left out), latest first, up to 500. Every login of the branch (waiters use `GET /waiter/served`, same answer); works even with the Kitchen Display off |
 
 The Super Admin switches it on per branch with `PATCH /admin/branches/:id` `{ kitchenDisplay: true }`.
 

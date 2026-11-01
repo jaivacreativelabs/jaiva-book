@@ -38,7 +38,7 @@ import { splitVariant } from '../../utils/menu';
 import { DishNote } from '../../components/DishNote';
 import { addItemToBill, FoodGrid, setBillNote, setBillQuantity } from '../../components/FoodGrid';
 import { KitchenSendButton, useSendToKitchen } from '../../components/KitchenSend';
-import { KitchenBadges, WaiterTabs } from '../../components/WaiterTabs';
+import { KitchenBadges, StaffTabs } from '../../components/StaffTabs';
 import { useDraftSync } from '../../hooks/useDraftSync';
 import { useRootClass } from '../../hooks/useRootClass';
 import { MergeGroupModal, MoveGroupModal, SplitGroupModal, type GroupAction, type SplitChoice } from './TableGroupActions';
@@ -832,7 +832,7 @@ export function WaiterTablesPage() {
   if (!activeBranch!.kitchenDisplay) {
     return (
       <div className="page">
-        <WaiterTabs />
+        <StaffTabs />
         <Empty icon={<ConciergeBell />} title="Taking orders needs the Kitchen Display">
           The Super Admin can switch the Kitchen Display on under Restaurants › Bills &amp; Kitchen.
         </Empty>
@@ -920,7 +920,7 @@ export function TablesPage() {
         />
       ) : (
       <div className="page">
-        <WaiterTabs />
+        <StaffTabs />
         <PageHeader
           title="Tables"
           subtitle={isWaiter ? 'Tap a table to take its order' : 'View and manage restaurant tables'}
