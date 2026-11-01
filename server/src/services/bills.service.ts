@@ -37,7 +37,8 @@ import {
   type Table,
   type Transaction,
 } from '../models/index.js';
-import { type AppError, badRequest, conflict, notFound } from '../utils/errors.js';
+import { AppError, badRequest, conflict, forbidden, notFound } from '../utils/errors.js';
+import { assertAdmin } from '../utils/roles.js';
 import { effectiveCategory, effectiveItem, restaurantSettings, toDraftDTO, toTransactionDTO } from '../utils/serialize.js';
 import { resolvePayments } from '../utils/payments.js';
 import { toObjectId } from '../utils/validate.js';
@@ -171,8 +172,15 @@ export function assertActive(draft: DraftLean) {
 
 // ---------------- Reading / creating drafts ----------------
 
-export async function getDraft(scope: BranchScope, id: string): Promise<DraftDTO> {
-  return toDTO(await findDraft(scope, id));
+/** Waiters take table orders only: a counter bill is the admin's. */
+export function assertWaiterTable(actor: Pick<AuthUser, 'role'>, draft: Pick<Draft, 'type'>) {
+  if (actor.role === 'WAITER' && draft.type !== 'TABLE') throw forbidden('Waiters can only take table orders');
+}
+
+export async function getDraft(actor: AuthUser, scope: BranchScope, id: string): Promise<DraftDTO> {
+  const draft = await findDraft(scope, id);
+  assertWaiterTable(actor, draft);
+  return toDTO(draft);
 }
 
 export async function listTableDrafts(scope: BranchScope, tableId: unknown): Promise<DraftDTO[]> {
@@ -187,6 +195,7 @@ export async function listTableDrafts(scope: BranchScope, tableId: unknown): Pro
 
 /** The admin's own takeaway/counter bill for this branch, created on first use. */
 export async function getCounterDraft(actor: AuthUser, scope: BranchScope): Promise<DraftDTO> {
+  assertAdmin(actor);
   const filter = { branchId: scope.branch._id, ownerUserId: actor._id, type: 'COUNTER', status: 'ACTIVE' };
   let draft = await DraftModel.findOne(filter).lean<DraftLean>();
   if (!draft) {
@@ -276,10 +285,35 @@ export async function createTableGroup(
 
 // ---------------- Updating ----------------
 
+const sameDiscount = (a: { type?: string | null; value?: number | null } | null | undefined, b: typeof a) =>
+  (a?.type ?? null) === (b?.type ?? null) && (!a?.type || (a.value ?? 0) === (b?.value ?? 0));
+
+/**
+ * A waiter changes only the dishes of a table order: no discount, name or guest changes, and
+ * nothing the kitchen already has may be lowered (there is no cancel ticket – the admin does that).
+ * Unchanged fields may still be sent, as the bill screens always send them.
+ */
+function assertWaiterEdit(draft: DraftLean, input: DraftUpdateInput) {
+  if (input.discount !== undefined && !sameDiscount(input.discount, draft.discount)) throw forbidden('Only a Restaurant Admin can give a discount');
+  if (input.customerName !== undefined && input.customerName !== (draft.customerName ?? '')) throw forbidden('Only a Restaurant Admin can change the customer name');
+  if (input.guestCount !== undefined && input.guestCount !== draft.guestCount) throw forbidden('Only a Restaurant Admin can change the guests');
+  if (input.groupTag !== undefined && input.groupTag !== (draft.groupTag ?? '')) throw forbidden('Only a Restaurant Admin can change the group');
+  const wanted = new Map(input.items.map((i) => [i.menuItemId, i.quantity]));
+  const sent = new Map((draft.kitchenSent ?? []).map((s) => [String(s.menuItemId), s.quantity]));
+  for (const line of draft.items) {
+    const now = wanted.get(String(line.menuItemId)) ?? 0;
+    if (now < line.quantity && now < (sent.get(String(line.menuItemId)) ?? 0)) {
+      throw new AppError(403, 'IN_KITCHEN', `${line.name} is already in the kitchen – ask the Restaurant Admin to remove it`);
+    }
+  }
+}
+
 export async function updateDraft(actor: AuthUser, scope: BranchScope, id: string, input: DraftUpdateInput): Promise<DraftDTO> {
   const draft = await findDraft(scope, id);
+  assertWaiterTable(actor, draft);
   assertActive(draft);
   if (draft.version !== input.version) throw await staleVersion(draft);
+  if (actor.role === 'WAITER') assertWaiterEdit(draft, input);
 
   const previousQty = new Map(draft.items.map((i) => [String(i.menuItemId), i.quantity]));
   const lines = await priceLines(scope, input.items);
@@ -326,6 +360,7 @@ export async function updateDraft(actor: AuthUser, scope: BranchScope, id: strin
 // ---------------- Deleting ----------------
 
 export async function deleteDraft(actor: AuthUser, scope: BranchScope, id: string, version: number): Promise<void> {
+  assertAdmin(actor);
   const draft = await findDraft(scope, id);
   assertActive(draft);
   if (draft.version !== version) throw await staleVersion(draft);
@@ -364,6 +399,7 @@ export async function finalizeDraft(
   id: string,
   input: FinalizeInput,
 ): Promise<{ transaction: TransactionDTO; replayed: boolean }> {
+  assertAdmin(actor, 'Only a Restaurant Admin can generate the bill');
   const draftId = toObjectId(id, 'bill');
 
   // Same idempotency key seen before → return the original result.
@@ -536,6 +572,7 @@ export async function createManualSale(
   scope: BranchScope,
   input: ManualSaleInput,
 ): Promise<{ transaction: TransactionDTO; replayed: boolean }> {
+  assertAdmin(actor);
   const byKey = await TransactionModel.findOne({ branchId: scope.branch._id, idempotencyKey: input.idempotencyKey }).lean<TransactionLean>();
   if (byKey) {
     if (!byKey.manual) throw conflict('Idempotency key was used for another bill', 'IDEMPOTENCY_MISMATCH');

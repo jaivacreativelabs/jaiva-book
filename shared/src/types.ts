@@ -250,6 +250,8 @@ export interface TableGroupSummaryDTO {
   version: number;
   /** portions added since the last kitchen ticket (0 when the branch has nothing left to send) */
   kitchenPending: number;
+  /** food still in the kitchen: READY if any of it is ready, else PREPARING, else NEW (sent); null when none */
+  kitchenStatus: 'NEW' | 'PREPARING' | 'READY' | null;
 }
 
 export interface TableDTO {

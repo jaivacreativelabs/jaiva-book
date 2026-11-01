@@ -1,16 +1,43 @@
 import type { Types } from 'mongoose';
-import { kitchenPending, type TableCreateInput, type TableDTO, type TableOccupancy, type TablesResponseDTO } from '@rb/shared';
+import {
+  KITCHEN_BOARD_STATUSES,
+  kitchenPending,
+  type KitchenStatus,
+  type TableCreateInput,
+  type TableDTO,
+  type TableOccupancy,
+  type TablesResponseDTO,
+} from '@rb/shared';
 import type { AuthUser } from '../middleware/auth.js';
 import type { BranchScope } from '../middleware/scope.js';
-import { DraftModel, TableModel, type Draft, type Table } from '../models/index.js';
+import { DraftModel, KitchenTicketModel, TableModel, type Draft, type Table } from '../models/index.js';
 import { conflict, notFound } from '../utils/errors.js';
+import { assertAdmin } from '../utils/roles.js';
 import { nameKey, toObjectId } from '../utils/validate.js';
 import { audit } from './audit.service.js';
 
 type TableLean = Table & { _id: Types.ObjectId };
 type DraftLean = Draft & { _id: Types.ObjectId };
+type BoardStatus = (typeof KITCHEN_BOARD_STATUSES)[number];
 
 const sentQty = (rows: { menuItemId: Types.ObjectId; quantity: number }[]) => rows.map((r) => ({ menuItemId: String(r.menuItemId), quantity: r.quantity }));
+
+/** Each group's food still in the kitchen, by the status that matters most to a waiter: Ready, then Preparing, then sent. */
+const KITCHEN_RANK: Record<BoardStatus, number> = { NEW: 1, PREPARING: 2, READY: 3 };
+async function kitchenStatusByDraft(drafts: DraftLean[]): Promise<Map<string, BoardStatus>> {
+  const out = new Map<string, BoardStatus>();
+  if (!drafts.length) return out;
+  const open = await KitchenTicketModel.find({ draftId: { $in: drafts.map((d) => d._id) }, status: { $in: KITCHEN_BOARD_STATUSES } })
+    .select('draftId status')
+    .lean<{ draftId: Types.ObjectId; status: KitchenStatus }[]>();
+  for (const t of open) {
+    const key = String(t.draftId);
+    const status = t.status as BoardStatus;
+    const prev = out.get(key);
+    if (!prev || KITCHEN_RANK[status] > KITCHEN_RANK[prev]) out.set(key, status);
+  }
+  return out;
+}
 
 export function occupancyOf(table: Pick<Table, 'seats' | 'status'>, seatsUsed: number): TableOccupancy {
   if (table.status === 'RESERVED' && seatsUsed === 0) return 'RESERVED';
@@ -18,7 +45,7 @@ export function occupancyOf(table: Pick<Table, 'seats' | 'status'>, seatsUsed: n
   return seatsUsed > 0 ? 'PARTIAL' : 'AVAILABLE';
 }
 
-export function toTableDTO(t: TableLean, drafts: DraftLean[]): TableDTO {
+export function toTableDTO(t: TableLean, drafts: DraftLean[], kitchen: Map<string, BoardStatus> = new Map()): TableDTO {
   const groups = drafts
     .sort((a, b) => a.groupName.localeCompare(b.groupName, undefined, { numeric: true }))
     .map((d) => ({
@@ -32,6 +59,7 @@ export function toTableDTO(t: TableLean, drafts: DraftLean[]): TableDTO {
       previewItems: d.items.slice(0, 4).map((i) => ({ name: i.name, imageUrl: i.imageUrl ?? null })),
       version: d.version,
       kitchenPending: kitchenPending(sentQty(d.items), sentQty(d.kitchenSent ?? [])),
+      kitchenStatus: kitchen.get(String(d._id)) ?? null,
     }));
   const seatsUsed = drafts.reduce((a, d) => a + d.guestCount, 0);
   return {
@@ -66,11 +94,12 @@ export async function listTables(scope: BranchScope, floor?: unknown): Promise<T
     const key = String(d.tableId);
     byTable.set(key, [...(byTable.get(key) ?? []), d]);
   }
+  const kitchen = scope.branch.kitchenDisplay ? await kitchenStatusByDraft(drafts) : undefined;
   return {
     floors,
     tables: tables
       .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
-      .map((t) => toTableDTO(t, byTable.get(String(t._id)) ?? [])),
+      .map((t) => toTableDTO(t, byTable.get(String(t._id)) ?? [], kitchen)),
   };
 }
 
@@ -78,7 +107,7 @@ export async function getTableDTO(scope: BranchScope, tableId: Types.ObjectId): 
   const table = await TableModel.findOne({ _id: tableId, branchId: scope.branch._id }).lean<TableLean>();
   if (!table) throw notFound('Table');
   const drafts = await DraftModel.find({ tableId, status: 'ACTIVE', type: 'TABLE' }).lean<DraftLean[]>();
-  return toTableDTO(table, drafts);
+  return toTableDTO(table, drafts, scope.branch.kitchenDisplay ? await kitchenStatusByDraft(drafts) : undefined);
 }
 
 async function getTableOr404(scope: BranchScope, id: string) {
@@ -100,6 +129,7 @@ export async function seatsInUse(tableId: Types.ObjectId, exceptDraftId?: Types.
 }
 
 export async function createTable(actor: AuthUser, scope: BranchScope, input: TableCreateInput) {
+  assertAdmin(actor);
   const labelKey = nameKey(input.label);
   if (await TableModel.exists({ branchId: scope.branch._id, labelKey })) {
     throw conflict(`Table ${input.label} already exists`, 'DUPLICATE');
@@ -123,6 +153,7 @@ export async function createTable(actor: AuthUser, scope: BranchScope, input: Ta
 }
 
 export async function updateTable(actor: AuthUser, scope: BranchScope, id: string, input: Partial<TableCreateInput>) {
+  assertAdmin(actor);
   const table = await getTableOr404(scope, id);
   if (input.label && nameKey(input.label) !== table.labelKey) {
     const labelKey = nameKey(input.label);
@@ -152,6 +183,7 @@ export async function updateTable(actor: AuthUser, scope: BranchScope, id: strin
 }
 
 export async function deactivateTable(actor: AuthUser, scope: BranchScope, id: string) {
+  assertAdmin(actor);
   const table = await getTableOr404(scope, id);
   if ((await seatsInUse(table._id)) > 0 || (await DraftModel.exists({ tableId: table._id, status: 'ACTIVE' }))) {
     throw conflict('This table has open bills. Finalise or delete them first.', 'TABLE_IN_USE');

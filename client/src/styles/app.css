@@ -3812,6 +3812,99 @@ html.app-open body {
   font-weight: 600;
 }
 
+/* ============ Waiter › Take Order (phone first) ============ */
+.waiter-tabs {
+  margin-bottom: 14px;
+}
+.waiter-tabs .tab {
+  flex: 1;
+  text-align: center;
+  text-decoration: none;
+  font-size: 1rem;
+}
+.waiter-tables {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+}
+.waiter-table {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 96px;
+  padding: 12px;
+  border: 2px solid transparent;
+  border-radius: var(--radius-lg);
+  background: var(--status-available-soft);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.waiter-table.PARTIAL {
+  background: var(--status-partial-soft);
+}
+.waiter-table.FULL {
+  background: var(--status-full-soft);
+}
+.waiter-table.RESERVED {
+  background: var(--status-reserved-soft);
+}
+.waiter-table-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.waiter-table-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  font-size: 0.8125rem;
+}
+.waiter-group-name {
+  font-weight: 600;
+}
+.waiter-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.waiter-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.waiter-group {
+  width: 100%;
+  background: var(--color-surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.waiter-group .group-icon {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.waiter-group .group-name,
+.waiter-group .muted {
+  display: block;
+}
+.waiter-in-kitchen {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+@media (max-width: 768px) {
+  .waiter-tables {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+}
+
 /* ============ Variants (sizes / types) ============ */
 /* Size / type choices: square tiles, tap one to add it */
 .variant-list {

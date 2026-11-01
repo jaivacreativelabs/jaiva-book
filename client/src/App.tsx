@@ -11,6 +11,7 @@ import { MenuPage } from './pages/restaurant/MenuPage';
 import { PrintReceiptPage } from './pages/restaurant/PrintReceiptPage';
 import { KitchenPage, PrintKitchenTicketPage } from './pages/restaurant/KitchenPage';
 import { WaiterPage } from './pages/restaurant/WaiterPage';
+import { WaiterOrderPage } from './pages/restaurant/WaiterOrderPage';
 import { TablesPage } from './pages/restaurant/TablesPage';
 import { TransactionsPage } from './pages/restaurant/TransactionsPage';
 import { useAuth } from './store/auth';
@@ -97,6 +98,15 @@ export function App() {
         }
       >
         <Route path="/waiter" element={<WaiterPage />} />
+      </Route>
+      <Route
+        element={
+          <RequireRole roles={['WAITER']}>
+            <AppLayout />
+          </RequireRole>
+        }
+      >
+        <Route path="/waiter/order" element={<WaiterOrderPage />} />
       </Route>
       <Route
         path="/admin"

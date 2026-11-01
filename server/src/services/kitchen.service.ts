@@ -13,7 +13,7 @@ import type { AuthUser } from '../middleware/auth.js';
 import type { BranchScope } from '../middleware/scope.js';
 import { DraftModel, KitchenTicketModel, nextSequence, TableModel, TransactionModel, type Draft, type KitchenTicket } from '../models/index.js';
 import { todayIn } from '../utils/dates.js';
-import { AppError, conflict, notFound } from '../utils/errors.js';
+import { AppError, conflict, forbidden, notFound } from '../utils/errors.js';
 import { assertAdmin } from '../utils/roles.js';
 import { toObjectId } from '../utils/validate.js';
 
@@ -73,6 +73,7 @@ export async function sendToKitchen(
   if (!scope.branch.kitchenDisplay) return null;
   const draft = await DraftModel.findOne({ _id: toObjectId(String(draftId), 'bill'), branchId: scope.branch._id, status: { $ne: 'DELETED' } }).lean<DraftLean>();
   if (!draft) throw notFound('Bill');
+  if (actor.role === 'WAITER' && draft.type !== 'TABLE') throw forbidden('Waiters can only take table orders');
   const items = unsentItems(draft);
   if (!items.length) return null;
 

@@ -61,7 +61,7 @@ export const createGroup = async (req: Request, res: Response) => {
   res.status(201).json({ data: await bills.createTableGroup(currentUser(req), getBranchScope(req), parse(createGroupSchema, req.body)) });
 };
 export const getDraft = async (req: Request, res: Response) => {
-  res.json({ data: await bills.getDraft(getBranchScope(req), id(req)) });
+  res.json({ data: await bills.getDraft(currentUser(req), getBranchScope(req), id(req)) });
 };
 export const updateDraft = async (req: Request, res: Response) => {
   res.json({ data: await bills.updateDraft(currentUser(req), getBranchScope(req), id(req), parse(draftUpdateSchema, req.body)) });

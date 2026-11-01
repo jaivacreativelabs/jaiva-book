@@ -130,9 +130,10 @@ export function createApiRouter(): Router {
     },
   );
 
-  // ---- Menu (both roles, scoped) ----
+  // ---- Menu (both roles, scoped; waiters may only read it to take orders) ----
   const menuRouter = Router();
   menuRouter.use(authenticate, requireMenuScope);
+  menuRouter.use((req, res, next) => (req.method === 'GET' ? next() : requireRole('RESTAURANT_ADMIN', 'SUPER_ADMIN')(req, res, next)));
   menuRouter.get('/categories', menu.listCategories);
   menuRouter.post('/categories', menu.createCategory);
   menuRouter.post('/categories/reorder', menu.reorderCategories);

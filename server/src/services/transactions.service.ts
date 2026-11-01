@@ -19,6 +19,7 @@ import { editableUntil, restaurantSettings, toTransactionDTO } from '../utils/se
 import { priceLines } from './bills.service.js';
 import { resolvePayments } from '../utils/payments.js';
 import { escapeRegex, toObjectId } from '../utils/validate.js';
+import { assertAdmin } from '../utils/roles.js';
 import { audit } from './audit.service.js';
 
 type TransactionLean = Transaction & { _id: Types.ObjectId };
@@ -28,6 +29,7 @@ type TransactionLean = Transaction & { _id: Types.ObjectId };
  * may see. Restaurant Admins never get results outside their assigned branches.
  */
 export function transactionFilter(user: AuthUser, q: Partial<TransactionQuery>): Record<string, unknown> {
+  assertAdmin(user);
   const filter: Record<string, unknown> = {};
   if (user.role !== 'SUPER_ADMIN') {
     if (q.branchId) {
@@ -75,6 +77,7 @@ export async function listTransactions(
 }
 
 async function getAccessible(user: AuthUser, id: string) {
+  assertAdmin(user);
   const tx = await TransactionModel.findById(toObjectId(id, 'transaction')).lean<TransactionLean>();
   if (!tx) throw notFound('Transaction');
   if (user.role !== 'SUPER_ADMIN' && !user.branchIds.some((b) => b.equals(tx.branchId))) {

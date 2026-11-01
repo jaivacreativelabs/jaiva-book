@@ -7,6 +7,7 @@ import type { AuthUser } from '../middleware/auth.js';
 import type { BranchScope } from '../middleware/scope.js';
 import { BranchModel, DraftModel, TableModel } from '../models/index.js';
 import { conflict } from '../utils/errors.js';
+import { assertAdmin } from '../utils/roles.js';
 import { audit } from './audit.service.js';
 import { sendBranchReport } from './dailyReport.service.js';
 
@@ -18,6 +19,7 @@ const REPORT_MESSAGE: Record<string, string> = {
 };
 
 export async function setShopOpen(actor: AuthUser, scope: BranchScope, open: boolean): Promise<ShopStateDTO> {
+  assertAdmin(actor);
   const branchId = scope.branch._id;
   if (open) {
     await BranchModel.updateOne({ _id: branchId }, { $set: { shopOpen: true, shopStateAt: new Date() } });

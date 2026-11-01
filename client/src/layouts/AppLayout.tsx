@@ -6,6 +6,7 @@ import {
   ChevronDown,
   CircleCheck,
   CirclePlus,
+  ClipboardList,
   CloudOff,
   FileText,
   History,
@@ -55,7 +56,9 @@ const RESTAURANT_NAV: NavItem[] = [
 // Shown only when the Super Admin has switched the Kitchen Display on for the restaurant.
 const KITCHEN_NAV: NavItem = { to: '/kitchen', label: 'Kitchen', icon: ChefHat };
 // Food the kitchen marked Ready (also needs the Kitchen Display).
-const WAITER_NAV: NavItem = { to: '/waiter', label: 'Ready to Serve', icon: ConciergeBell };
+const WAITER_NAV: NavItem = { to: '/waiter', label: 'Ready to Serve', icon: ConciergeBell, end: true };
+// Waiter logins: taking table orders (they never bill).
+const TAKE_ORDER_NAV: NavItem = { to: '/waiter/order', label: 'Take Order', icon: ClipboardList };
 
 const ADMIN_NAV: NavItem[] = [
   { to: '/admin/restaurants', label: 'Restaurants', icon: Store },
@@ -187,7 +190,7 @@ export function AppLayout() {
     : isKitchen
       ? [KITCHEN_NAV]
       : isWaiter
-        ? [WAITER_NAV]
+        ? [TAKE_ORDER_NAV, WAITER_NAV]
         : activeBranch?.kitchenDisplay
           ? [...RESTAURANT_NAV, KITCHEN_NAV, WAITER_NAV]
           : RESTAURANT_NAV;

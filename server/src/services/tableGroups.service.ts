@@ -13,6 +13,7 @@ import type { AuthUser } from '../middleware/auth.js';
 import type { BranchScope } from '../middleware/scope.js';
 import { DraftModel, KitchenTicketModel, TableModel, type Draft, type Table } from '../models/index.js';
 import { badRequest, conflict, notFound } from '../utils/errors.js';
+import { assertAdmin } from '../utils/roles.js';
 import { toDraftDTO } from '../utils/serialize.js';
 import { toObjectId } from '../utils/validate.js';
 import { audit } from './audit.service.js';
@@ -60,6 +61,7 @@ const stripCategory = <T extends { categoryName: string }>({ categoryName: _c, .
 // ---------------- Move ----------------
 
 export async function moveGroup(actor: AuthUser, scope: BranchScope, id: string, input: MoveGroupInput): Promise<DraftDTO> {
+  assertAdmin(actor);
   const targetId = toObjectId(input.tableId, 'table');
   return runInTransaction(async (session) => {
     const draft = await findDraft(scope, id, session);
@@ -113,6 +115,7 @@ export async function moveGroup(actor: AuthUser, scope: BranchScope, id: string,
 // ---------------- Merge ----------------
 
 export async function mergeGroup(actor: AuthUser, scope: BranchScope, id: string, input: MergeGroupInput): Promise<DraftDTO> {
+  assertAdmin(actor);
   return runInTransaction(async (session) => {
     const source = await findDraft(scope, id, session);
     assertActive(source);
@@ -202,6 +205,7 @@ export async function splitGroup(
   id: string,
   input: SplitGroupInput,
 ): Promise<{ source: DraftDTO; created: DraftDTO }> {
+  assertAdmin(actor);
   try {
     return await runInTransaction(async (session) => {
       const source = await findDraft(scope, id, session);

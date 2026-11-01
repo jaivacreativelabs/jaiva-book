@@ -71,9 +71,10 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   if (user.role === 'KITCHEN' && !KITCHEN_ROUTES.some((r) => req.baseUrl.endsWith(r))) {
     throw forbidden('Kitchen logins can only open the Kitchen Display');
   }
-  // Waiter logins likewise: only the Waiter board.
-  if (user.role === 'WAITER' && !WAITER_ROUTES.some((r) => req.baseUrl.endsWith(r))) {
-    throw forbidden('Waiter logins can only open the Waiter board');
+  // Waiter logins likewise: the Waiter board, and taking table orders (exact calls only – the
+  // services refuse waiters everything else on those routes too).
+  if (user.role === 'WAITER' && !WAITER_ROUTES.some((r) => req.baseUrl.endsWith(r)) && !WAITER_CALLS.some((c) => isCall(req, c))) {
+    throw forbidden('Waiter logins can only take table orders and open the Waiter board');
   }
   req.user = user;
   next();
@@ -81,6 +82,18 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
 
 const KITCHEN_ROUTES = ['/kitchen', '/auth'];
 const WAITER_ROUTES = ['/waiter', '/auth'];
+const ID = '[a-f0-9]{24}';
+/** [method, router, path within it] a waiter may call to take an order for a table. */
+const WAITER_CALLS: [string, string, RegExp][] = [
+  ['GET', '/tables', /^\/?$/],
+  ['GET', '/menu', /^\/(categories|items)$/],
+  ['POST', '/bills', /^\/table-groups$/],
+  ['GET', '/bills', new RegExp(`^/${ID}$`)],
+  ['PUT', '/bills', new RegExp(`^/${ID}$`)],
+  ['POST', '/bills', new RegExp(`^/${ID}/kitchen$`)],
+];
+const isCall = (req: Request, [method, router, path]: [string, string, RegExp]) =>
+  req.method === method && req.baseUrl.endsWith(router) && path.test(req.path);
 
 export function requireRole(...roles: Role[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
