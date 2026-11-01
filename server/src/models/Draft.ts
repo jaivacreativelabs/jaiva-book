@@ -13,6 +13,8 @@ const draftItemSchema = new Schema(
     extraTaxes: { type: [{ name: String, rateBps: Number, _id: false }], default: [] },
     quantity: { type: Number, required: true, min: 1 },
     unavailable: { type: Boolean, default: false },
+    // For the kitchen ("no onion"); goes with the dish's next ticket
+    note: { type: String, default: '' },
   },
   { _id: false },
 );

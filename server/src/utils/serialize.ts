@@ -198,6 +198,7 @@ export function toDraftDTO(d: WithId<Draft>, tableLabel = ''): DraftDTO {
       extraTaxes: (i.extraTaxes ?? []).map((t) => ({ name: t.name ?? '', rateBps: t.rateBps ?? 0 })),
       quantity: i.quantity,
       unavailable: Boolean(i.unavailable),
+      note: i.note ?? '',
     })),
     discount: d.discount?.type ? { type: d.discount.type, value: d.discount.value ?? 0 } : null,
     totals: {

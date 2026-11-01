@@ -3898,6 +3898,82 @@ html.app-open body {
   color: var(--color-primary);
   font-weight: 600;
 }
+
+/* Dish notes for the kitchen ("no onion") */
+.dish-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 3px;
+  padding: 2px 8px;
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-pill);
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  white-space: nowrap;
+}
+.dish-note svg {
+  flex-shrink: 0;
+}
+/* A long note is cut on the line; the full text shows when tapped */
+.dish-note-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.group-line-name .dish-note {
+  display: flex;
+  width: fit-content;
+}
+/* New Bill: the note gets a row of its own under the dish (the dish column is narrow) */
+.bill-line.with-note {
+  flex-wrap: wrap;
+}
+.bill-line-note {
+  flex-basis: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.bill-line-note .dish-note {
+  display: flex;
+  max-width: 100%;
+  margin-top: 0;
+}
+.group-line-name .dish-note-input {
+  display: block;
+  width: 100%;
+}
+.dish-note.add {
+  border-style: dashed;
+  border-color: var(--color-border-strong, var(--color-border));
+  background: none;
+  color: var(--color-text-muted);
+}
+.dish-note:disabled {
+  opacity: 1;
+  cursor: default;
+}
+/* 16px so iPad Safari does not zoom in while typing */
+.dish-note-input {
+  height: 36px;
+  margin-top: 3px;
+  font-size: 16px;
+}
+.kds-note {
+  display: block;
+  margin: 1px 0 2px 1.6em;
+  color: var(--color-warning);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
 @media (max-width: 768px) {
   .waiter-tables {
     grid-template-columns: repeat(2, minmax(0, 1fr));

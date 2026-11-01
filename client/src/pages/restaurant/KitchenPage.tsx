@@ -97,6 +97,7 @@ function TicketCard({ ticket, branchId, now, canHandOver }: { ticket: KitchenTic
         {ticket.items.map((i) => (
           <li key={i.menuItemId}>
             <strong>{i.quantity}×</strong> {i.name}
+            {i.note && <span className="kds-note">{i.note}</span>}
           </li>
         ))}
       </ul>
@@ -190,6 +191,7 @@ body { background: #fff !important; }
 .slip .rule { border-top: 1px dashed #000; margin: 6px 0; }
 .slip .big { font-size: 15px; font-weight: bold; }
 .slip li { list-style: none; font-size: 15px; padding: 2px 0; }
+.slip .note { display: block; padding-left: 2.2em; font-size: 13px; font-weight: bold; }
 .slip ul { margin: 0; padding: 0; }
 .print-actions { text-align: center; margin: 16px; font-family: var(--font-family); }
 @media print { .print-actions { display: none; } }
@@ -234,6 +236,7 @@ export function PrintKitchenTicketPage() {
           {t.items.map((i) => (
             <li key={i.menuItemId}>
               {i.quantity} x {i.name}
+              {i.note && <span className="note">** {i.note}</span>}
             </li>
           ))}
         </ul>

@@ -204,6 +204,8 @@ export interface DraftItemDTO {
   quantity: number;
   /** item became unavailable after it was added – must be removed before finalising */
   unavailable: boolean;
+  /** for the kitchen ("no onion"); "" when none */
+  note: string;
 }
 
 export interface DraftTotalsDTO {
@@ -289,7 +291,8 @@ export interface KitchenTicketDTO {
   token: number | null;
   /** The bill's number once it is generated; "" before */
   billNumber: string;
-  items: { menuItemId: string; name: string; quantity: number }[];
+  /** `note`: what the order asked of the kitchen for that dish ("no onion"), "" when nothing */
+  items: { menuItemId: string; name: string; quantity: number; note: string }[];
   status: KitchenStatus;
   priority: boolean;
   createdByName: string;

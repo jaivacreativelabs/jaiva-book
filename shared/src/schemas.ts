@@ -244,6 +244,8 @@ export const draftUpdateSchema = z.strictObject({
       z.strictObject({
         menuItemId: objectIdSchema,
         quantity: z.number().int().min(1).max(LIMITS.maxQuantity),
+        /** For the kitchen ("no onion"); left out keeps the dish's note */
+        note: z.string().trim().max(LIMITS.maxDishNote, `Keep the note under ${LIMITS.maxDishNote} letters`).optional(),
       }),
     )
     .max(LIMITS.maxBillLines)

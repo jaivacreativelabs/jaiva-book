@@ -60,13 +60,14 @@ interface PricedLine {
   extraTaxes: { name: string; rateBps: number }[];
   quantity: number;
   unavailable: boolean;
+  note: string;
   categoryName: string;
 }
 
-/** Looks up each requested item in the branch's effective menu. */
+/** Looks up each requested item in the branch's effective menu (its kitchen note is kept as given). */
 export async function priceLines(
   scope: BranchScope,
-  requested: { menuItemId: Types.ObjectId | string; quantity: number }[],
+  requested: { menuItemId: Types.ObjectId | string; quantity: number; note?: string | null }[],
   session?: ClientSession,
 ): Promise<PricedLine[]> {
   if (requested.length === 0) return [];
@@ -123,6 +124,7 @@ export async function priceLines(
       extraTaxes: (parentEff ?? eff).extraTaxes,
       quantity: r.quantity,
       unavailable: !available,
+      note: r.note ?? '',
       categoryName: catEff?.name ?? '',
     };
   });
@@ -316,7 +318,12 @@ export async function updateDraft(actor: AuthUser, scope: BranchScope, id: strin
   if (actor.role === 'WAITER') assertWaiterEdit(draft, input);
 
   const previousQty = new Map(draft.items.map((i) => [String(i.menuItemId), i.quantity]));
-  const lines = await priceLines(scope, input.items);
+  // A dish sent without a note keeps the one it has (screens that do not show notes).
+  const previousNote = new Map(draft.items.map((i) => [String(i.menuItemId), i.note ?? '']));
+  const lines = await priceLines(
+    scope,
+    input.items.map((i) => ({ ...i, note: i.note ?? previousNote.get(i.menuItemId) ?? '' })),
+  );
   const blocked = lines.filter((l) => l.unavailable && l.quantity > (previousQty.get(String(l.menuItemId)) ?? 0));
   if (blocked.length) {
     throw badRequest(`${blocked.map((l) => l.name).join(', ')} ${blocked.length > 1 ? 'are' : 'is'} unavailable`, 'ITEM_UNAVAILABLE', {

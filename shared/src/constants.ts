@@ -74,6 +74,7 @@ export const LIMITS = {
   maxPageSize: 100,
   maxImageBytes: 2 * 1024 * 1024,
   maxVariants: 12,
+  maxDishNote: 60,
 } as const;
 
 /** A generated (paid) bill can be corrected for this long; every edit keeps the old version. */

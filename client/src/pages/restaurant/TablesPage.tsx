@@ -35,7 +35,8 @@ import { useToast } from '../../store/toast';
 import { usePageSearch } from '../../store/topbar';
 import { cx, formatMoney, newIdempotencyKey } from '../../utils/format';
 import { splitVariant } from '../../utils/menu';
-import { addItemToBill, FoodGrid, setBillQuantity } from '../../components/FoodGrid';
+import { DishNote } from '../../components/DishNote';
+import { addItemToBill, FoodGrid, setBillNote, setBillQuantity } from '../../components/FoodGrid';
 import { KitchenSendButton, useSendToKitchen } from '../../components/KitchenSend';
 import { useDraftSync } from '../../hooks/useDraftSync';
 import { useRootClass } from '../../hooks/useRootClass';
@@ -205,9 +206,23 @@ function TableForm({
 
 // ---------------- Table detail (groups) ----------------
 
-/** A group's dishes with − qty + and remove – on the card and while adding food. */
-function GroupLines({ lines, onQty }: { lines: DraftItemDTO[]; onQty: (id: string, quantity: number) => void }) {
+/**
+ * A group's dishes with − qty + and remove – on the card and while adding food. With the Kitchen
+ * Display, each dish can carry a note for the kitchen until all of it has been sent (`sent`).
+ */
+function GroupLines({
+  lines,
+  onQty,
+  onNote,
+  sent = [],
+}: {
+  lines: DraftItemDTO[];
+  onQty: (id: string, quantity: number) => void;
+  onNote?: (id: string, note: string) => void;
+  sent?: KitchenQty[];
+}) {
   if (lines.length === 0) return <span className="muted">No items yet</span>;
+  const sentById = new Map(sent.map((s) => [s.menuItemId, s.quantity]));
   return (
     <div className="group-lines">
       {lines.map((l) => (
@@ -219,6 +234,7 @@ function GroupLines({ lines, onQty }: { lines: DraftItemDTO[]; onQty: (id: strin
             {splitVariant(l.name).dish}
             {splitVariant(l.name).variant && <small className="line-variant">{splitVariant(l.name).variant}</small>}
             <small>{formatMoney(l.unitPrice * l.quantity)}</small>
+            {onNote && <DishNote dish={l.name} note={l.note} onChange={(n) => onNote(l.menuItemId, n)} disabled={(sentById.get(l.menuItemId) ?? 0) >= l.quantity} />}
           </span>
           <div className="qty">
             <button onClick={() => onQty(l.menuItemId, l.quantity - 1)} aria-label={`Decrease ${l.name}`}>
@@ -253,7 +269,7 @@ function useGroupKitchen(draftId: string, sync: DraftSync | null, lines: DraftIt
       onSent();
     }
   };
-  return { pending, sending, sendToKitchen };
+  return { pending, sending, sendToKitchen, sent };
 }
 
 /** Left side while ordering: the branch menu; tapping a dish adds it to the active group. */
@@ -358,7 +374,12 @@ function GroupCard({
       {state.status === 'error' && <div className="alert alert-warning">Not saved – retrying</div>}
       {state.message && (state.status === 'conflict' || state.status === 'rejected') && <div className="alert alert-warning">{state.message}</div>}
       {local ? (
-        <GroupLines lines={lines} onQty={setQty} />
+        <GroupLines
+          lines={lines}
+          onQty={setQty}
+          onNote={activeBranch!.kitchenDisplay ? (id, note) => sync?.update((b) => setBillNote(b, id, note)) : undefined}
+          sent={kitchen.sent}
+        />
       ) : (
         // Until the bill has loaded: a glimpse of its dishes.
         <div className="group-items">

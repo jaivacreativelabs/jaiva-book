@@ -254,3 +254,55 @@ describe('parcels', () => {
     expect((await w.adminB1.post(`/api/v1/kitchen/tickets/${parcel.id}/handed-over`)).status).toBe(404);
   });
 });
+
+describe('dish notes', () => {
+  type Line = { menuItemId: string; quantity: number; note?: string };
+  const notes = (d: { items: { name: string; note: string }[] }) => d.items.map((i) => [i.name, i.note]);
+
+  it('a note goes to the kitchen with the dish, and stays when a screen leaves it out', async () => {
+    let g = ok<Draft & { items: { name: string; note: string }[] }>(await w.adminA1.post('/api/v1/bills/table-groups', { tableId: w.tables.t3, guestCount: 2 }), 201);
+    const put = async (items: Line[]) => (g = ok(await w.adminA1.put(`/api/v1/bills/${g.id}`, { version: g.version, items })));
+    await put([
+      { menuItemId: w.items.dosa, quantity: 1, note: '  no onion ' },
+      { menuItemId: w.items.coffee, quantity: 1 },
+    ]);
+    expect(notes(g)).toEqual([
+      ['Dosa', 'no onion'],
+      ['Coffee', ''],
+    ]);
+    const t1 = ok<Ticket & { items: { name: string; note: string }[] }>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`));
+    expect(notes(t1)).toEqual([
+      ['Dosa', 'no onion'],
+      ['Coffee', ''],
+    ]);
+    // An older screen sends no notes: they are kept, and go with the next portion too.
+    await put([
+      { menuItemId: w.items.dosa, quantity: 2 },
+      { menuItemId: w.items.coffee, quantity: 1 },
+    ]);
+    expect(notes(g)[0]).toEqual(['Dosa', 'no onion']);
+    const t2 = ok<Ticket & { items: { name: string; note: string }[] }>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`));
+    expect(notes(t2)).toEqual([['Dosa', 'no onion']]);
+    // An empty note clears it.
+    await put([
+      { menuItemId: w.items.dosa, quantity: 2, note: '' },
+      { menuItemId: w.items.coffee, quantity: 1 },
+    ]);
+    expect(notes(g)[0]).toEqual(['Dosa', '']);
+    expect((await w.adminA1.put(`/api/v1/bills/${g.id}`, { version: g.version, items: [{ menuItemId: w.items.dosa, quantity: 2, note: 'x'.repeat(61) }] })).status).toBe(400);
+  });
+
+  it('merging keeps the notes', async () => {
+    const mk = async (items: Line[]) => {
+      const d = ok<Draft>(await w.adminA1.post('/api/v1/bills/table-groups', { tableId: w.tables.t4, guestCount: 1 }), 201);
+      return ok<Draft>(await w.adminA1.put(`/api/v1/bills/${d.id}`, { version: d.version, items }));
+    };
+    const a = await mk([{ menuItemId: w.items.vada, quantity: 1, note: 'extra chutney' }]);
+    const b = await mk([{ menuItemId: w.items.idly, quantity: 2, note: 'less spicy' }]);
+    const merged = ok<Draft & { items: { name: string; note: string }[] }>(await w.adminA1.post(`/api/v1/bills/${b.id}/merge`, { version: b.version, intoDraftId: a.id }));
+    expect(notes(merged)).toEqual([
+      ['Vada', 'extra chutney'],
+      ['Idly', 'less spicy'],
+    ]);
+  });
+});

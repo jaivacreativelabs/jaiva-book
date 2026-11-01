@@ -22,6 +22,7 @@ const kitchenTicketSchema = new Schema(
             menuItemId: { type: Schema.Types.ObjectId, required: true },
             name: { type: String, required: true },
             quantity: { type: Number, required: true, min: 1 },
+            note: { type: String, default: '' },
           },
           { _id: false },
         ),

@@ -36,7 +36,7 @@ export function toKitchenTicketDTO(t: TicketLean): KitchenTicketDTO {
     orderType: orderTypeOf(t),
     token: t.token ?? null,
     billNumber: t.billNumber ?? '',
-    items: t.items.map((i) => ({ menuItemId: String(i.menuItemId), name: i.name, quantity: i.quantity })),
+    items: t.items.map((i) => ({ menuItemId: String(i.menuItemId), name: i.name, quantity: i.quantity, note: i.note ?? '' })),
     status: t.status,
     priority: t.priority,
     createdByName: t.createdByName ?? '',
@@ -54,7 +54,7 @@ function assertKitchenOn(scope: BranchScope) {
 function unsentItems(draft: DraftLean) {
   const sent = new Map(draft.kitchenSent.map((s) => [String(s.menuItemId), s.quantity]));
   return draft.items
-    .map((i) => ({ menuItemId: i.menuItemId, name: i.name, quantity: i.quantity - (sent.get(String(i.menuItemId)) ?? 0) }))
+    .map((i) => ({ menuItemId: i.menuItemId, name: i.name, quantity: i.quantity - (sent.get(String(i.menuItemId)) ?? 0), note: i.note ?? '' }))
     .filter((i) => i.quantity > 0);
 }
 

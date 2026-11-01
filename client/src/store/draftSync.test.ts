@@ -15,7 +15,7 @@ function draft(version: number, items: [string, number][] = []): DraftDTO {
     guestCount: 2,
     groupTag: '',
     customerName: '',
-    items: items.map(([id, quantity]) => ({ menuItemId: id, name: id, imageUrl: null, unitPrice: 1000, taxable: true, taxRateBps: null, extraTaxes: [], quantity, unavailable: false })),
+    items: items.map(([id, quantity]) => ({ menuItemId: id, name: id, imageUrl: null, unitPrice: 1000, taxable: true, taxRateBps: null, extraTaxes: [], quantity, unavailable: false, note: '' })),
     discount: null,
     totals: { subtotal: 0, discountAmount: 0, taxes: [], taxTotal: 0, grandTotal: 0 },
     status: 'ACTIVE',
@@ -67,7 +67,7 @@ const add =
       ...bill,
       items: existing
         ? bill.items.map((i) => (i.menuItemId === id ? { ...i, quantity: i.quantity + 1 } : i))
-        : [...bill.items, { menuItemId: id, name: id, imageUrl: null, unitPrice: 1000, taxable: true, taxRateBps: null, extraTaxes: [], quantity: 1, unavailable: false }],
+        : [...bill.items, { menuItemId: id, name: id, imageUrl: null, unitPrice: 1000, taxable: true, taxRateBps: null, extraTaxes: [], quantity: 1, unavailable: false, note: '' }],
     };
   };
 

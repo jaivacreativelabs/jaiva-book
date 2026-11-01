@@ -29,7 +29,7 @@ export function useEditMinutesLeft(editableUntil: string | null): number {
 
 function toLocalBill(tx: TransactionDTO): LocalBill {
   return {
-    items: tx.items.map((i) => ({ menuItemId: i.menuItemId, name: i.name, imageUrl: i.imageUrl, unitPrice: i.unitPrice, taxable: i.taxable, taxRateBps: i.taxRateBps, extraTaxes: i.extraTaxes, quantity: i.quantity, unavailable: false })),
+    items: tx.items.map((i) => ({ menuItemId: i.menuItemId, name: i.name, imageUrl: i.imageUrl, unitPrice: i.unitPrice, taxable: i.taxable, taxRateBps: i.taxRateBps, extraTaxes: i.extraTaxes, quantity: i.quantity, unavailable: false, note: '' })),
     customerName: tx.customerName,
     discount: tx.discount ? { type: tx.discount.type as 'PERCENT' | 'FLAT', value: tx.discount.value } : null,
   };

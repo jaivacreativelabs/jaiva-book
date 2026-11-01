@@ -32,7 +32,8 @@ import { ChangeCalculator } from '../../components/ChangeCalculator';
 import { DiscountEditor } from '../../components/DiscountEditor';
 import { FoodImage } from '../../components/FoodImage';
 import { ManualSaleModal } from '../../components/ManualSale';
-import { addItemToBill, FoodGrid, setBillQuantity } from '../../components/FoodGrid';
+import { DishNote } from '../../components/DishNote';
+import { addItemToBill, FoodGrid, setBillNote, setBillQuantity } from '../../components/FoodGrid';
 import { PaymentButtons, paymentFields, printReceipt, SplitPayment, type PaymentChoice } from '../../components/PaymentButtons';
 import { ConfirmDialog, Empty, Loading, Spinner } from '../../components/ui';
 import { useDraftSync } from '../../hooks/useDraftSync';
@@ -160,6 +161,8 @@ export function BillingView({
   const [sentNow, setSentNow] = useState<{ draftId: string; sent: KitchenQty[] } | null>(null);
   const kitchenSent = (sentNow && sentNow.draftId === draft?.id ? sentNow.sent : draft?.kitchenSent) ?? [];
   const toKitchen = kitchenPending(local?.items ?? [], kitchenSent);
+  // A dish's note goes with its next ticket, so it is fixed once all of the dish is in the kitchen.
+  const sentById = new Map(kitchenSent.map((s) => [s.menuItemId, s.quantity]));
   const sendToKitchen = async () => {
     if (!sync || !draft) return;
     const most = new Map(kitchenSent.map((s) => [s.menuItemId, s.quantity]));
@@ -331,7 +334,7 @@ export function BillingView({
             </Empty>
           ) : (
             local.items.map((line) => (
-              <div key={line.menuItemId} className={cx('bill-line', line.unavailable && 'unavailable')}>
+              <div key={line.menuItemId} className={cx('bill-line', line.unavailable && 'unavailable', activeBranch!.kitchenDisplay && 'with-note')}>
                 <div className="thumb">
                   <FoodImage src={line.imageUrl} alt={line.name} emoji={itemIcon.get(line.menuItemId)} />
                 </div>
@@ -359,6 +362,11 @@ export function BillingView({
                 <button className="icon-btn danger plain" onClick={() => setQty(line.menuItemId, 0)} disabled={!editable} aria-label={`Remove ${line.name}`}>
                   <Trash2 />
                 </button>
+                {activeBranch!.kitchenDisplay && (
+                  <div className="bill-line-note">
+                    <DishNote dish={line.name} note={line.note} onChange={(n) => mutate((b) => setBillNote(b, line.menuItemId, n))} disabled={!editable || (sentById.get(line.menuItemId) ?? 0) >= line.quantity} />
+                  </div>
+                )}
               </div>
             ))
           )}

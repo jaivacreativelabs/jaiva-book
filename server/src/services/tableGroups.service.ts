@@ -21,7 +21,7 @@ import { assertActive, findDraft, nextGroupName, priceLines, staleVersion, table
 
 type DraftLean = Draft & { _id: Types.ObjectId };
 type TableLean = Table & { _id: Types.ObjectId };
-type Qty = { menuItemId: Types.ObjectId; quantity: number };
+type Qty = { menuItemId: Types.ObjectId; quantity: number; note?: string | null };
 
 function assertTableGroup(draft: DraftLean) {
   if (draft.type !== 'TABLE' || !draft.tableId) throw badRequest('Only table bills can be moved, merged or split');
@@ -44,13 +44,14 @@ async function openGroups(tableId: Types.ObjectId, session?: ClientSession) {
 
 const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
-/** Adds quantities per dish, keeping the order dishes were first seen in. */
+/** Adds quantities per dish, keeping the order dishes were first seen in (and the first kitchen note). */
 function sumQty(...lists: Qty[][]): Qty[] {
   const out = new Map<string, Qty>();
   for (const list of lists) {
-    for (const { menuItemId, quantity } of list) {
+    for (const { menuItemId, quantity, note } of list) {
       const prev = out.get(String(menuItemId));
-      out.set(String(menuItemId), { menuItemId, quantity: (prev?.quantity ?? 0) + quantity });
+      const keptNote = prev?.note || note;
+      out.set(String(menuItemId), { menuItemId, quantity: (prev?.quantity ?? 0) + quantity, ...(keptNote && { note: keptNote }) });
     }
   }
   return [...out.values()];
@@ -227,12 +228,12 @@ export async function splitGroup(
         moving.set(r.menuItemId, r.quantity);
       }
       const staying = source.items
-        .map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity - (moving.get(String(i.menuItemId)) ?? 0) }))
+        .map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity - (moving.get(String(i.menuItemId)) ?? 0), note: i.note }))
         .filter((i) => i.quantity > 0);
       if (!staying.length) throw badRequest(`Leave at least one dish on ${source.groupName}’s bill – use Move to send the whole group`);
       const leaving = source.items
         .filter((i) => moving.has(String(i.menuItemId)))
-        .map((i) => ({ menuItemId: i.menuItemId, quantity: moving.get(String(i.menuItemId))! }));
+        .map((i) => ({ menuItemId: i.menuItemId, quantity: moving.get(String(i.menuItemId))!, note: i.note }));
 
       // What the kitchen already has goes with the dishes first, the rest stays.
       const sent = new Map((source.kitchenSent ?? []).map((s) => [String(s.menuItemId), s.quantity]));

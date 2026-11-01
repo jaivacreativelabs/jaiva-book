@@ -17,8 +17,13 @@ export function addItemToBill(bill: LocalBill, item: MenuItemDTO): LocalBill {
   }
   return {
     ...bill,
-    items: [...bill.items, { menuItemId: item.id, name: item.name, imageUrl: item.imageUrl, unitPrice: item.price, taxable: item.taxable, taxRateBps: item.taxRateBps, extraTaxes: item.extraTaxes, quantity: 1, unavailable: false }],
+    items: [...bill.items, { menuItemId: item.id, name: item.name, imageUrl: item.imageUrl, unitPrice: item.price, taxable: item.taxable, taxRateBps: item.taxRateBps, extraTaxes: item.extraTaxes, quantity: 1, unavailable: false, note: '' }],
   };
+}
+
+/** Sets the kitchen note of a line ("no onion"). */
+export function setBillNote(bill: LocalBill, menuItemId: string, note: string): LocalBill {
+  return { ...bill, items: bill.items.map((i) => (i.menuItemId === menuItemId ? { ...i, note } : i)) };
 }
 
 /** Changes a line's quantity; 0 removes it. */

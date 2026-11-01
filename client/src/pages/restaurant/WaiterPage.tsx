@@ -65,6 +65,7 @@ function ReadyCard({ ticket, branchId, now }: { ticket: KitchenTicketDTO; branch
         {ticket.items.map((i) => (
           <li key={i.menuItemId}>
             <strong>{i.quantity}×</strong> {i.name}
+            {i.note && <span className="kds-note">{i.note}</span>}
           </li>
         ))}
       </ul>

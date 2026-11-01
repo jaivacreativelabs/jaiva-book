@@ -8,7 +8,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ChefHat, ChevronUp, ConciergeBell, Minus, Plus, Trash2, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { NavLink, useSearchParams } from 'react-router-dom';
-import { addItemToBill, FoodGrid, setBillQuantity } from '../../components/FoodGrid';
+import { DishNote } from '../../components/DishNote';
+import { addItemToBill, FoodGrid, setBillNote, setBillQuantity } from '../../components/FoodGrid';
 import { FoodImage } from '../../components/FoodImage';
 import { useSendToKitchen } from '../../components/KitchenSend';
 import { Empty, Loading, SidePanel, Spinner, Stepper } from '../../components/ui';
@@ -287,7 +288,7 @@ function WaiterOrder({ draftId, onBack }: { draftId: string; onBack: () => void 
         }
       >
         {state.message && (state.status === 'conflict' || state.status === 'rejected' || state.status === 'error') && <div className="alert alert-warning">{state.message}</div>}
-        {!local ? <Loading label="Loading order…" /> : <WaiterLines lines={lines} sentById={sentById} editable={editable} onQty={setQty} />}
+        {!local ? <Loading label="Loading order…" /> : <WaiterLines lines={lines} sentById={sentById} editable={editable} onQty={setQty} onNote={(id, note) => sync?.update((b) => setBillNote(b, id, note))} />}
       </SidePanel>
     </>
   );
@@ -299,11 +300,13 @@ function WaiterLines({
   sentById,
   editable,
   onQty,
+  onNote,
 }: {
   lines: DraftItemDTO[];
   sentById: Map<string, number>;
   editable: boolean;
   onQty: (id: string, quantity: number) => void;
+  onNote: (id: string, note: string) => void;
 }) {
   if (lines.length === 0) return <span className="muted">No dishes yet</span>;
   return (
@@ -322,6 +325,8 @@ function WaiterLines({
                 {formatMoney(l.unitPrice * l.quantity)}
                 {inKitchen > 0 && <span className="waiter-in-kitchen"> · {inKitchen} in kitchen</span>}
               </small>
+              {/* A note reaches the kitchen with the dish's next KOT, so it is fixed once all of it is there. */}
+              <DishNote dish={l.name} note={l.note} onChange={(n) => onNote(l.menuItemId, n)} disabled={!editable || inKitchen >= l.quantity} />
             </span>
             <div className="qty">
               <button onClick={() => onQty(l.menuItemId, l.quantity - 1)} disabled={!editable || l.quantity <= inKitchen} aria-label={`Decrease ${l.name}`}>

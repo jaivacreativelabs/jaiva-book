@@ -38,7 +38,7 @@ export interface DraftSyncState {
 
 export interface DraftSaveBody {
   version: number;
-  items: { menuItemId: string; quantity: number }[];
+  items: { menuItemId: string; quantity: number; note: string }[];
   customerName: string;
   discount: DiscountInput | null;
 }
@@ -58,7 +58,7 @@ export const saveDraftSync = (id: string, branchId: string, body: DraftSaveBody)
 
 const toBody = (draft: DraftDTO, local: LocalBill): DraftSaveBody => ({
   version: draft.version,
-  items: local.items.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity })),
+  items: local.items.map((i) => ({ menuItemId: i.menuItemId, quantity: i.quantity, note: i.note ?? '' })),
   customerName: local.customerName,
   discount: local.discount,
 });
