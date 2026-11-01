@@ -49,12 +49,12 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <section className="login-brand">
-        <h2>{APP_NAME} Billing</h2>
+        <h2>{APP_NAME}</h2>
         <p>Billing, tables, menu and sales for every restaurant – in one place.</p>
       </section>
       <section className="login-form-wrap">
         <form className="login-form" onSubmit={submit}>
-          <div className="login-mobile-logo">{APP_NAME} Billing</div>
+          <div className="login-mobile-logo">{APP_NAME}</div>
           <div>
             <h1>Sign in</h1>
             <p className="muted" style={{ marginTop: 6 }}>
