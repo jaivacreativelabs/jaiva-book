@@ -69,19 +69,19 @@ describe('sending orders', () => {
       return tables.flatMap((t) => t.groups).find((g) => g.draftId === group.id)?.kitchenPending;
     };
     expect(await pending()).toBe(2);
-    const t1 = ok<Ticket>(await w.adminA1.post(`/api/v1/bills/${group.id}/kitchen`));
+    const t1 = ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${group.id}/kitchen`))[0];
     expect(await pending()).toBe(0);
     expect(ok<{ kitchenSent: unknown[] }>(await w.adminA1.get(`/api/v1/bills/${group.id}`)).kitchenSent).toEqual([{ menuItemId: w.items.idly, quantity: 2 }]);
     expect(t1.number).toMatch(/^\d{8}-0001$/);
     expect([t1.type, t1.tableLabel, t1.groupName, t1.status]).toEqual(['TABLE', 'T1', 'Ravi', 'NEW']);
     expect(lines(t1)).toEqual([['Idly', 2]]);
-    expect(ok(await w.adminA1.post(`/api/v1/bills/${group.id}/kitchen`))).toBeNull();
+    expect(ok(await w.adminA1.post(`/api/v1/bills/${group.id}/kitchen`))).toEqual([]);
 
     group = await save(w.adminA1, group, [
       { menuItemId: w.items.idly, quantity: 3 },
       { menuItemId: w.items.coffee, quantity: 1 },
     ]);
-    const t2 = ok<Ticket>(await w.adminA1.post(`/api/v1/bills/${group.id}/kitchen`));
+    const t2 = ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${group.id}/kitchen`))[0];
     expect(t2.number).toMatch(/-0002$/);
     expect(lines(t2)).toEqual([
       ['Idly', 1],
@@ -92,7 +92,7 @@ describe('sending orders', () => {
   it('never re-sends food after a quantity goes down and up again', async () => {
     group = await save(w.adminA1, group, [{ menuItemId: w.items.idly, quantity: 1 }]);
     group = await save(w.adminA1, group, [{ menuItemId: w.items.idly, quantity: 3 }]);
-    expect(ok(await w.adminA1.post(`/api/v1/bills/${group.id}/kitchen`))).toBeNull();
+    expect(ok(await w.adminA1.post(`/api/v1/bills/${group.id}/kitchen`))).toEqual([]);
   });
 
   it('generating the bill sends whatever is left', async () => {
@@ -123,7 +123,7 @@ describe('sending orders', () => {
   it('deleting an order cancels tickets the kitchen has not started', async () => {
     let g = ok<Draft>(await w.adminA1.post('/api/v1/bills/table-groups', { tableId: w.tables.t2, guestCount: 1 }), 201);
     g = await save(w.adminA1, g, [{ menuItemId: w.items.biryani, quantity: 1 }]);
-    const t = ok<Ticket>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`));
+    const t = ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`))[0];
     expect((await w.adminA1.delete(`/api/v1/bills/${g.id}?version=${g.version}`)).status).toBe(204);
     expect((await board(w.adminA1)).some((x) => x.id === t.id)).toBe(false);
     expect((await KitchenTicketModel.findById(t.id).lean())?.status).toBe('CANCELLED');
@@ -197,12 +197,13 @@ describe('kitchen login', () => {
 
 describe('parcels', () => {
   let parcel: Ticket;
+  let parcelRest: Ticket; // the coffee added after the first send
 
   it('a take-away order goes to the kitchen as a PARCEL with its token, then the bill number', async () => {
     let d = ok<Draft>(await w.adminA1.get('/api/v1/bills/counter'));
     d = await save(w.adminA1, d, [{ menuItemId: w.items.dosa, quantity: 2 }]);
     // Sent before payment: the token now, the bill number once the bill is generated.
-    const early = ok<Ticket>(await w.adminA1.post(`/api/v1/bills/${d.id}/kitchen`, { orderType: 'TAKEAWAY' }));
+    const early = ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${d.id}/kitchen`, { orderType: 'TAKEAWAY' }))[0];
     expect([early.type, early.orderType, early.billNumber]).toEqual(['COUNTER', 'TAKEAWAY', '']);
     expect(early.token).toBe(2);
     d = await save(w.adminA1, d, [
@@ -216,7 +217,7 @@ describe('parcels', () => {
       [[['Dosa', 2]], 'TAKEAWAY', 2, billNumber],
       [[['Coffee', 1]], 'TAKEAWAY', 2, billNumber],
     ]);
-    parcel = mine[0];
+    [parcel, parcelRest] = mine;
   });
 
   it('the next counter order gets the next token; a counter Dine In is not a parcel', async () => {
@@ -233,10 +234,16 @@ describe('parcels', () => {
     expect((await cook.post(`/api/v1/kitchen/tickets/${parcel.id}/advance`, { from: 'READY' })).status).toBe(403);
     expect((await cook.post(`/api/v1/kitchen/tickets/${parcel.id}/handed-over`)).status).toBe(403);
     expect((await cook.get('/api/v1/kitchen/parcels')).status).toBe(403);
-    expect(ok<Ticket[]>(await w.adminA1.get('/api/v1/kitchen/parcels')).map((t) => t.id)).toEqual([parcel.id]);
+    // Part of it is still being made: not ready to hand over yet.
+    expect(ok<Ticket[]>(await w.adminA1.get('/api/v1/kitchen/parcels'))).toEqual([]);
+    const early = await w.adminA1.post(`/api/v1/kitchen/tickets/${parcel.id}/handed-over`);
+    expect([early.status, early.body.error.code]).toEqual([409, 'PARCEL_NOT_READY']);
+    for (const from of ['NEW', 'PREPARING']) ok(await cook.post(`/api/v1/kitchen/tickets/${parcelRest.id}/advance`, { from }));
+    expect(ok<Ticket[]>(await w.adminA1.get('/api/v1/kitchen/parcels')).map((t) => t.id)).toEqual([parcel.id, parcelRest.id]);
 
     const done = ok<Ticket>(await w.adminA1.post(`/api/v1/kitchen/tickets/${parcel.id}/handed-over`));
     expect([done.status, done.servedByName]).toEqual(['SERVED', 'a1@test.local']);
+    ok(await w.adminA1.post(`/api/v1/kitchen/tickets/${parcelRest.id}/handed-over`)); // New Bill hands over both together
     expect(ok<Ticket[]>(await w.adminA1.get('/api/v1/kitchen/parcels'))).toEqual([]);
     expect((await board(w.adminA1)).some((t) => t.id === parcel.id)).toBe(false);
     expect((await w.adminA1.post(`/api/v1/kitchen/tickets/${parcel.id}/handed-over`)).status).toBe(409);
@@ -244,7 +251,8 @@ describe('parcels', () => {
     // It now shows under Served, for the counter and the kitchen alike – latest first.
     for (const client of [w.adminA1, cook]) {
       const served = ok<Ticket[]>(await client.get('/api/v1/kitchen/served'));
-      expect(served[0]).toMatchObject({ id: parcel.id, status: 'SERVED', servedByName: 'a1@test.local' });
+      expect(served.slice(0, 2).map((t) => t.id)).toEqual([parcelRest.id, parcel.id]);
+      expect(served[1]).toMatchObject({ status: 'SERVED', servedByName: 'a1@test.local' });
     }
     expect(ok<Ticket[]>(await w.adminA1.get('/api/v1/kitchen/served?date=2020-01-01'))).toEqual([]);
     expect((await w.adminA1.get('/api/v1/kitchen/served?date=today')).status).toBe(400);
@@ -278,7 +286,7 @@ describe('dish notes', () => {
       ['Dosa', 'no onion'],
       ['Coffee', ''],
     ]);
-    const t1 = ok<Ticket & { items: { name: string; note: string }[] }>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`));
+    const t1 = ok<(Ticket & { items: { name: string; note: string }[] })[]>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`))[0];
     expect(notes(t1)).toEqual([
       ['Dosa', 'no onion'],
       ['Coffee', ''],
@@ -289,7 +297,7 @@ describe('dish notes', () => {
       { menuItemId: w.items.coffee, quantity: 1 },
     ]);
     expect(notes(g)[0]).toEqual(['Dosa', 'no onion']);
-    const t2 = ok<Ticket & { items: { name: string; note: string }[] }>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`));
+    const t2 = ok<(Ticket & { items: { name: string; note: string }[] })[]>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`))[0];
     expect(notes(t2)).toEqual([['Dosa', 'no onion']]);
     // An empty note clears it.
     await put([

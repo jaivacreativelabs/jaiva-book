@@ -3660,6 +3660,32 @@ html.app-open body {
   font-weight: 500;
   letter-spacing: 0;
 }
+/* Which kitchen counter (Tiffin, Juice…) a ticket belongs to */
+.kds-station {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--color-info-soft);
+  color: var(--color-info);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.kds-stations {
+  margin-bottom: 12px;
+}
+/* Super Admin › Bills & Kitchen: one kitchen counter and its categories */
+.kitchen-counter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+.kitchen-counter .chip.muted:not(.active) {
+  color: var(--color-text-subtle);
+}
 .kds-ticket-by {
   color: var(--color-text-subtle);
   font-size: 0.75rem;

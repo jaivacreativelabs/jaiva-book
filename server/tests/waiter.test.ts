@@ -33,7 +33,7 @@ describe('waiter board', () => {
   it('shows only Ready food; Served records the waiter', async () => {
     let g = ok<Draft>(await w.adminA1.post('/api/v1/bills/table-groups', { tableId: w.tables.t1, guestCount: 2 }), 201);
     g = ok<Draft>(await w.adminA1.put(`/api/v1/bills/${g.id}`, { version: g.version, items: [{ menuItemId: w.items.idly, quantity: 2 }] }));
-    const t = ok<Ticket>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`));
+    const t = ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`))[0];
     expect(ok<Ticket[]>(await waiter.get('/api/v1/waiter/tickets'))).toEqual([]); // still NEW
 
     for (const from of ['NEW', 'PREPARING']) ok(await w.adminA1.post(`/api/v1/kitchen/tickets/${t.id}/advance`, { from }));
@@ -55,7 +55,7 @@ describe('waiter board', () => {
   it('parcels are not on the waiter board and a waiter cannot hand one over', async () => {
     let d = ok<Draft>(await w.adminA1.get('/api/v1/bills/counter'));
     d = ok<Draft>(await w.adminA1.put(`/api/v1/bills/${d.id}`, { version: d.version, items: [{ menuItemId: w.items.dosa, quantity: 1 }] }));
-    const t = ok<Ticket>(await w.adminA1.post(`/api/v1/bills/${d.id}/kitchen`, { orderType: 'TAKEAWAY' }));
+    const t = ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${d.id}/kitchen`, { orderType: 'TAKEAWAY' }))[0];
     for (const from of ['NEW', 'PREPARING']) ok(await w.adminA1.post(`/api/v1/kitchen/tickets/${t.id}/advance`, { from }));
     expect(ok<Ticket[]>(await waiter.get('/api/v1/waiter/tickets'))).toEqual([]);
     expect((await waiter.post(`/api/v1/waiter/tickets/${t.id}/served`)).status).toBe(403);
@@ -99,7 +99,7 @@ describe('waiter takes table orders', () => {
     expect(ok<Draft>(await waiter.get(`/api/v1/bills/${g.id}`)).version).toBe(g.version);
     expect((await groupOnTables()).kitchenPending).toBe(2);
 
-    const t = ok<Ticket & { createdByName: string; orderType: string }>(await waiter.post(`/api/v1/bills/${g.id}/kitchen`));
+    const t = ok<(Ticket & { createdByName: string; orderType: string })[]>(await waiter.post(`/api/v1/bills/${g.id}/kitchen`))[0];
     expect([t.tableLabel, t.createdByName, t.orderType]).toEqual(['T4', 'Muthu', 'DINE_IN']);
     const onBoard = ok<(Ticket & { createdByName: string })[]>(await w.adminA1.get('/api/v1/kitchen/tickets')).find((x) => x.id === t.id)!;
     expect([onBoard.tableLabel, onBoard.createdByName]).toEqual(['T4', 'Muthu']);
@@ -111,9 +111,9 @@ describe('waiter takes table orders', () => {
       { menuItemId: w.items.dosa, quantity: 2 },
       { menuItemId: w.items.coffee, quantity: 1 },
     ]);
-    const t = ok<Ticket>(await waiter.post(`/api/v1/bills/${g.id}/kitchen`));
+    const t = ok<Ticket[]>(await waiter.post(`/api/v1/bills/${g.id}/kitchen`))[0];
     expect(t.items.map((i) => [i.name, i.quantity])).toEqual([['Coffee', 1]]);
-    expect(ok(await waiter.post(`/api/v1/bills/${g.id}/kitchen`))).toBeNull(); // nothing is ever sent twice
+    expect(ok(await waiter.post(`/api/v1/bills/${g.id}/kitchen`))).toEqual([]); // nothing is ever sent twice
     for (const from of ['NEW', 'PREPARING']) ok(await w.adminA1.post(`/api/v1/kitchen/tickets/${t.id}/advance`, { from }));
     expect((await groupOnTables()).kitchenStatus).toBe('READY');
   });

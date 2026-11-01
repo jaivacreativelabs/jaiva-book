@@ -7,7 +7,9 @@ import {
   type RestaurantCreateInput,
   type RestaurantUpdateInput,
   type RestaurantSettingsInput,
+  type KitchenStationsInput,
   type UserCreateInput,
+  type UserUpdateInput,
 } from '@rb/shared';
 import { runInTransaction } from '../config/transaction.js';
 import type { AuthUser } from '../middleware/auth.js';
@@ -358,6 +360,53 @@ export async function updateBranch(actor: AuthUser, id: string, input: Partial<O
   return toBranchDTO(b.toObject() as BranchLean);
 }
 
+/**
+ * Replaces a branch's kitchen counters. A category belongs to one counter at most; a counter a
+ * Kitchen login works cannot be removed until that login is moved.
+ */
+export async function setKitchenStations(actor: AuthUser, id: string, input: KitchenStationsInput) {
+  const b = await getBranchOr404(id);
+  const keys = input.stations.map((s) => nameKey(s.name));
+  const dupName = input.stations.find((_, i) => keys.indexOf(keys[i]) !== i);
+  if (dupName) throw conflict(`There are two counters named "${dupName.name}"`, 'DUPLICATE');
+
+  const seen = new Set<string>();
+  for (const s of input.stations) {
+    for (const c of s.categoryIds) {
+      if (seen.has(c)) throw badRequest('A category can go to one counter only', 'DUPLICATE_CATEGORY');
+      seen.add(c);
+    }
+  }
+  const catIds = [...seen].map((c) => toObjectId(c, 'category'));
+  const found = await CategoryModel.countDocuments({ _id: { $in: catIds }, restaurantId: b.restaurantId, branchId: { $in: [null, b._id] } });
+  if (found !== catIds.length) throw badRequest('One or more categories are not on this menu', 'INVALID_CATEGORY');
+
+  const current = new Set(b.kitchenStations.map((s) => String(s._id)));
+  const unknown = input.stations.find((s) => s.id && !current.has(s.id));
+  if (unknown) throw badRequest(`Counter "${unknown.name}" no longer exists – reload and try again`, 'INVALID_STATION');
+  const kept = new Set(input.stations.flatMap((s) => (s.id ? [s.id] : [])));
+  const removed = [...current].filter((s) => !kept.has(s)).map((s) => toObjectId(s));
+  const inUse = removed.length ? await UserModel.findOne({ kitchenStationId: { $in: removed } }).select('name').lean<{ name: string }>() : null;
+  if (inUse) throw conflict(`The Kitchen login "${inUse.name}" works a counter you removed – move it to another counter first`, 'STATION_IN_USE');
+
+  const before = b.kitchenStations.map((s) => s.name);
+  b.set(
+    'kitchenStations',
+    input.stations.map((s) => ({ ...(s.id && { _id: toObjectId(s.id) }), name: s.name, categoryIds: s.categoryIds.map((c) => toObjectId(c)) })),
+  );
+  await b.save();
+  await audit(actor, {
+    action: 'BRANCH_UPDATED',
+    entityType: 'Branch',
+    entityId: b._id,
+    restaurantId: b.restaurantId,
+    branchId: b._id,
+    summary: input.stations.length ? `Kitchen counters of "${b.name}": ${input.stations.map((s) => s.name).join(', ')}` : `Kitchen counters removed for "${b.name}"`,
+    meta: { before, after: input.stations.map((s) => s.name) },
+  });
+  return toBranchDTO(b.toObject() as BranchLean);
+}
+
 export async function setBranchStatus(actor: AuthUser, id: string, status: RecordStatus) {
   const b = await getBranchOr404(id);
   b.status = status;
@@ -407,6 +456,15 @@ export async function listRestaurantAdmins(query: { restaurantId?: unknown; stat
   return users.map(toUserDTO);
 }
 
+/** A Kitchen login's counter: one of its branch's counters, or null for every counter. */
+async function kitchenStationFor(role: string, branchId: Types.ObjectId, stationId: string | null | undefined) {
+  if (!stationId) return null;
+  if (role !== 'KITCHEN') throw badRequest('Only Kitchen logins work a kitchen counter', 'INVALID_STATION');
+  const id = toObjectId(stationId, 'counter');
+  if (!(await BranchModel.exists({ _id: branchId, 'kitchenStations._id': id }))) throw badRequest('This counter is not in the chosen restaurant', 'INVALID_STATION');
+  return id;
+}
+
 export async function createRestaurantAdmin(actor: AuthUser, input: UserCreateInput) {
   if (await UserModel.exists({ email: input.email })) throw conflict('This email is already in use', 'DUPLICATE');
   const assignments = await resolveAssignments(input.branchIds);
@@ -416,6 +474,7 @@ export async function createRestaurantAdmin(actor: AuthUser, input: UserCreateIn
     passwordHash: await hashPassword(input.password),
     role: input.role,
     ...assignments,
+    kitchenStationId: await kitchenStationFor(input.role, assignments.branchIds[0], input.kitchenStationId),
   });
   await audit(actor, {
     action: `${accountKind(input.role).action}_CREATED`,
@@ -428,7 +487,7 @@ export async function createRestaurantAdmin(actor: AuthUser, input: UserCreateIn
   return toUserDTO(user.toObject() as unknown as AuthUser);
 }
 
-export async function updateRestaurantAdmin(actor: AuthUser, id: string, input: { name?: string; branchIds?: string[] }) {
+export async function updateRestaurantAdmin(actor: AuthUser, id: string, input: UserUpdateInput) {
   const user = await getRestaurantAdminOr404(id);
   const before = user.branchIds.map(String);
   if (input.name) user.name = input.name;
@@ -436,6 +495,12 @@ export async function updateRestaurantAdmin(actor: AuthUser, id: string, input: 
     const a = await resolveAssignments(input.branchIds);
     user.branchIds = a.branchIds as typeof user.branchIds;
     user.restaurantIds = a.restaurantIds as typeof user.restaurantIds;
+  }
+  if (input.kitchenStationId !== undefined) {
+    user.kitchenStationId = await kitchenStationFor(user.role, user.branchIds[0], input.kitchenStationId);
+  } else if (input.branchIds && user.kitchenStationId) {
+    // Moving to another restaurant drops a counter that is not there.
+    if (!(await BranchModel.exists({ _id: user.branchIds[0], 'kitchenStations._id': user.kitchenStationId }))) user.kitchenStationId = null;
   }
   await user.save();
   await audit(actor, {

@@ -13,6 +13,17 @@ const branchSchema = new Schema(
     status: { type: String, enum: RECORD_STATUSES, default: 'ACTIVE' },
     // Orders are sent to a Kitchen Display board for this branch (Super Admin setting)
     kitchenDisplay: { type: Boolean, default: false },
+    // Kitchen counters (Tiffin, Juice…), in order: each gets the dishes of its categories as its
+    // own ticket; dishes of categories no counter lists go to the first. Empty → one kitchen.
+    kitchenStations: {
+      type: [
+        new Schema({
+          name: { type: String, required: true, trim: true, maxlength: 40 },
+          categoryIds: { type: [{ type: Schema.Types.ObjectId, ref: 'Category' }], default: [] },
+        }),
+      ],
+      default: [],
+    },
     // Open / Close Shop: while closed nothing can be billed. Closing emails the day's report.
     shopOpen: { type: Boolean, default: true },
     shopStateAt: { type: Date, default: null },

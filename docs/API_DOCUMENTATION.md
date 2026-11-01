@@ -69,14 +69,15 @@ Unknown body fields are rejected (`.strict()` schemas), so fields such as `role`
 | GET | `/admin/branches` | `?restaurantId=` |
 | POST | `/admin/branches` | `{ restaurantId, name, code, address?, phone?, email? }` |
 | PATCH | `/admin/branches/:id` | `{ name?, code?, address?, phone?, email? }` |
+| PUT | `/admin/branches/:id/kitchen-stations` | `{ stations: [{ id?, name, categoryIds }] }` (≤ 10) – replaces the kitchen counters; `id` keeps an existing one. A category can be in one counter only (400 `DUPLICATE_CATEGORY`); a counter a Kitchen login works cannot be removed (409 `STATION_IN_USE`) |
 | PATCH | `/admin/branches/:id/status` | `{ status }` |
 
 ### Restaurant Admin accounts
 | Method | Path | Body |
 |---|---|---|
 | GET | `/admin/users` | `?restaurantId=&status=` – Restaurant Admins only |
-| POST | `/admin/users` | `{ name, email, password, branchIds: [branchId], role? }` – `role` is `RESTAURANT_ADMIN` (default) or `KITCHEN` (Kitchen Display only); exactly one branch (branches are isolated) |
-| PATCH | `/admin/users/:id` | `{ name?, branchIds?: [branchId] }` (move the admin to another branch) |
+| POST | `/admin/users` | `{ name, email, password, branchIds: [branchId], role? }` – `role` is `RESTAURANT_ADMIN` (default) or `KITCHEN` (Kitchen Display only); exactly one branch (branches are isolated); `kitchenStationId?` gives a Kitchen login one counter of that branch (400 `INVALID_STATION` otherwise) |
+| PATCH | `/admin/users/:id` | `{ name?, branchIds?: [branchId], kitchenStationId?: id \| null }` (move the admin to another branch; a counter not in the new branch is dropped) |
 | PATCH | `/admin/users/:id/status` | `{ status }` – deactivation revokes sessions |
 | POST | `/admin/users/:id/reset-password` | `{ password }` |
 
@@ -156,8 +157,8 @@ draft containing an item that became unavailable cannot be finalised until it is
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/bills/:id/kitchen` | sends the order's not-yet-sent items as a new ticket; `null` when nothing is new or the branch has no Kitchen Display. Generating a bill does this automatically |
-| GET | `/kitchen/tickets` | the board: `NEW`, `PREPARING`, `READY` tickets, priority first, then oldest |
+| POST | `/bills/:id/kitchen` | sends the order's not-yet-sent items: an array with one new ticket, or one per kitchen counter; `[]` when nothing is new or the branch has no Kitchen Display. Generating a bill does this automatically |
+| GET | `/kitchen/tickets` | the board: `NEW`, `PREPARING`, `READY` tickets, priority first, then oldest. A Kitchen login with a counter gets only that counter's tickets, and moving another counter's ticket is 403 |
 | GET | `/kitchen/tickets/:id` | one ticket (kitchen slip printing; also works after it was served) |
 | POST | `/kitchen/tickets/:id/advance` | `{ from }` – one step on (READY → SERVED leaves the board). 409 `CONFLICT` with `details.current` if another screen moved it first |
 | POST | `/kitchen/tickets/:id/priority` | `{ priority: boolean }` |

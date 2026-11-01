@@ -47,6 +47,10 @@ export function AdminForm({ initial, restrictTo, onClose }: { initial?: UserDTO;
   const [branchId, setBranchId] = useState<string | null>(initial?.branchIds[0] ?? null);
   const [role, setRole] = useState<StaffRole>(initial?.role === 'KITCHEN' || initial?.role === 'WAITER' ? initial.role : 'RESTAURANT_ADMIN');
   const kind = role === 'KITCHEN' ? 'Kitchen login' : role === 'WAITER' ? 'Waiter login' : 'Restaurant Admin';
+  // Kitchen logins of a restaurant with kitchen counters can work one counter ('' → every counter).
+  const [stationId, setStationId] = useState(initial?.kitchenStationId ?? '');
+  const stations = (useAllBranches().data ?? []).find((b) => b.id === branchId)?.kitchenStations ?? [];
+  const kitchenStationId = role === 'KITCHEN' && stations.some((s) => s.id === stationId) ? stationId : null;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -64,8 +68,8 @@ export function AdminForm({ initial, restrictTo, onClose }: { initial?: UserDTO;
     setBusy(true);
     setError(null);
     try {
-      if (initial) await api.patch(`/admin/users/${initial.id}`, { name, branchIds }, { branchId: null });
-      else await api.post('/admin/users', { name, email, password, branchIds, role }, { branchId: null });
+      if (initial) await api.patch(`/admin/users/${initial.id}`, { name, branchIds, ...(role === 'KITCHEN' && { kitchenStationId }) }, { branchId: null });
+      else await api.post('/admin/users', { name, email, password, branchIds, role, kitchenStationId }, { branchId: null });
       await queryClient.invalidateQueries({ queryKey: ['admin'] });
       toast.success(initial ? `${kind} updated` : `${kind} ${email} created`);
       onClose();
@@ -123,6 +127,19 @@ export function AdminForm({ initial, restrictTo, onClose }: { initial?: UserDTO;
             <span className="field-hint">This admin had several restaurants. Saving keeps only the selected one.</span>
           )}
         </div>
+        {role === 'KITCHEN' && stations.length > 0 && (
+          <div className="field">
+            <span className="field-label">Kitchen counter</span>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }} role="radiogroup" aria-label="Kitchen counter">
+              {[{ id: '', name: 'All counters' }, ...stations].map((s) => (
+                <button key={s.id} type="button" role="radio" aria-checked={(kitchenStationId ?? '') === s.id} className={cx('chip outline', (kitchenStationId ?? '') === s.id && 'active')} onClick={() => setStationId(s.id)}>
+                  {s.name}
+                </button>
+              ))}
+            </div>
+            <span className="field-hint">A counter&apos;s login only sees the orders for that counter (Juice, Tiffin…).</span>
+          </div>
+        )}
         {error && <div className="alert alert-danger">{error}</div>}
         <button className="btn btn-primary btn-lg btn-block" disabled={busy}>
           {busy ? <Spinner /> : <CirclePlus />} {initial ? 'Save Changes' : role === 'KITCHEN' ? 'Create Kitchen Login' : role === 'WAITER' ? 'Create Waiter Login' : 'Create Admin'}
@@ -207,6 +224,7 @@ export function AdminsTable({ users, branches }: { users: UserDTO[]; branches: B
                   {u.role === 'KITCHEN' && (
                     <span className="badge badge-amber badge-sm" style={{ marginLeft: 6 }}>
                       Kitchen
+                      {u.kitchenStationId && ` · ${branchName.get(u.branchIds[0])?.kitchenStations.find((s) => s.id === u.kitchenStationId)?.name ?? ''}`}
                     </span>
                   )}
                   {u.role === 'WAITER' && (

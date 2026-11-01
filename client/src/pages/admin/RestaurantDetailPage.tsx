@@ -14,6 +14,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ActiveBadge } from '../../components/badges';
 import { ConfirmButton, ConfirmDialog, Empty, Field, Loading, LogoMark, Modal, PageHeader, SidePanel, Spinner, CancelButton } from '../../components/ui';
 import { api, errorMessage } from '../../services/api';
+import { useCategories } from '../../services/queries';
 import { useToast } from '../../store/toast';
 import { cx } from '../../utils/format';
 import { shrinkImage } from '../../utils/image';
@@ -82,6 +83,12 @@ function BranchForm({ restaurant, initial, onClose }: { restaurant: RestaurantDT
           {busy ? <Spinner /> : <CirclePlus />} {initial ? 'Save Changes' : 'Create Branch'}
         </button>
       </form>
+      {initial?.kitchenDisplay && (
+        <>
+          <hr className="divider" />
+          <KitchenCounters branch={initial} />
+        </>
+      )}
     </SidePanel>
   );
 }
@@ -224,6 +231,91 @@ function KitchenSwitch({ branch }: { branch: BranchDTO }) {
   );
 }
 
+/**
+ * Kitchen counters (Tiffin, Juice…): each gets the dishes of its categories as its own ticket, and
+ * a Kitchen login can be given one counter. Categories no counter lists go to the first.
+ */
+function KitchenCounters({ branch }: { branch: BranchDTO }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const categories = useCategories({ branchId: branch.id });
+  const [list, setList] = useState(branch.kitchenStations.map((s) => ({ ...s, key: s.id })));
+  const [busy, setBusy] = useState(false);
+  const counterOf = new Map(list.flatMap((s) => s.categoryIds.map((c) => [c, s.key] as const)));
+  const update = (key: string, patch: Partial<(typeof list)[number]>) => setList((l) => l.map((s) => (s.key === key ? { ...s, ...patch } : s)));
+  // A category belongs to one counter: picking it here takes it from the other.
+  const toggle = (key: string, categoryId: string) =>
+    setList((l) =>
+      l.map((s) =>
+        s.key === key
+          ? { ...s, categoryIds: s.categoryIds.includes(categoryId) ? s.categoryIds.filter((c) => c !== categoryId) : [...s.categoryIds, categoryId] }
+          : { ...s, categoryIds: s.categoryIds.filter((c) => c !== categoryId) },
+      ),
+    );
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const stations = list.map((s) => ({ ...(s.id && { id: s.id }), name: s.name.trim(), categoryIds: s.categoryIds }));
+      const saved = await api.put<BranchDTO>(`/admin/branches/${branch.id}/kitchen-stations`, { stations }, { branchId: null });
+      setList(saved.kitchenStations.map((s) => ({ ...s, key: s.id })));
+      await queryClient.invalidateQueries({ queryKey: ['admin'] });
+      toast.success(saved.kitchenStations.length ? 'Kitchen counters saved' : 'One kitchen for every order');
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="field">
+      <span className="field-label">Kitchen counters</span>
+      <span className="field-hint" style={{ marginTop: 0 }}>
+        For a kitchen with separate counters (Tiffin, Juice…): each counter gets its own ticket and can have its own Kitchen login. Categories not picked go to the
+        first counter. Leave empty for one kitchen.
+      </span>
+      <div className="stack" style={{ gap: 10, marginTop: 6 }}>
+        {list.map((s, i) => (
+          <div key={s.key} className="kitchen-counter">
+            <div className="row" style={{ gap: 8 }}>
+              <input className="input input-sm" value={s.name} onChange={(e) => update(s.key, { name: e.target.value })} maxLength={40} placeholder={i === 0 ? 'e.g. Tiffin' : 'e.g. Juice'} aria-label="Counter name" />
+              <button type="button" className="icon-btn plain danger-text" onClick={() => setList((l) => l.filter((x) => x.key !== s.key))} title="Remove counter" aria-label={`Remove ${s.name || 'counter'}`}>
+                <Trash2 />
+              </button>
+            </div>
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              {(categories.data ?? []).map((c) => {
+                const on = counterOf.get(c.id) === s.key;
+                const elsewhere = !on && counterOf.has(c.id);
+                return (
+                  <button key={c.id} type="button" className={cx('chip chip-sm', on && 'active', elsewhere && 'muted')} aria-pressed={on} onClick={() => toggle(s.key, c.id)}>
+                    {c.icon} {c.name}
+                  </button>
+                );
+              })}
+            </div>
+            {i === 0 && <span className="field-hint">Also gets every category not picked for another counter.</span>}
+          </div>
+        ))}
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            type="button"
+            className="btn btn-soft btn-sm"
+            disabled={list.length >= LIMITS.maxKitchenStations}
+            onClick={() => setList((l) => [...l, { id: '', key: `new-${Date.now()}`, name: '', categoryIds: [] }])}
+          >
+            <Plus /> Add counter
+          </button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => void save()} disabled={busy || list.some((s) => !s.name.trim())}>
+            {busy && <Spinner />} Save counters
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Deleting is for good, so the restaurant's name has to be typed first. */
 /** A restaurant run as one branch (all new ones): its bill code and Kitchen Display, with no branch wording. */
 function BillsAndKitchen({ branch }: { branch: BranchDTO }) {
@@ -268,6 +360,7 @@ function BillsAndKitchen({ branch }: { branch: BranchDTO }) {
         <KitchenSwitch branch={branch} />
         <span className="field-hint">Orders go to the Kitchen screen, and food the kitchen marks Ready to the Waiter screen.</span>
       </div>
+      {branch.kitchenDisplay && <KitchenCounters key={branch.kitchenStations.map((s) => s.id).join()} branch={branch} />}
     </div>
   );
 }

@@ -56,6 +56,7 @@ function ReadyCard({ ticket, branchId, now }: { ticket: KitchenTicketDTO; branch
             #{ticket.number}
             {ticket.priority && <Star size={15} className="kds-star-on" aria-label="Priority" />}
           </div>
+          {ticket.stationName && <span className="kds-station">{ticket.stationName}</span>}
         </div>
         <span className={cx('kds-timer', minutes >= 10 ? 'late' : minutes >= 5 && 'slow')} title={`Ready since ${formatDateTime(ticket.statusAt)}`}>
           <Timer size={13} /> {minutes < 1 ? 'now' : `${minutes}m`}

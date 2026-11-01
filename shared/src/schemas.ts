@@ -127,10 +127,26 @@ export const userCreateSchema = z.strictObject({
   branchIds: singleBranchSchema,
   /** Branch Admin (default), a Kitchen login (Kitchen Display only) or a Waiter login (Waiter board only) */
   role: z.enum(STAFF_ROLES).default('RESTAURANT_ADMIN'),
+  /** Kitchen logins: the one counter they work; null / left out → every counter */
+  kitchenStationId: objectIdSchema.nullable().optional(),
 });
 export const userUpdateSchema = z.strictObject({
   name: name(100).optional(),
   branchIds: singleBranchSchema.optional(),
+  kitchenStationId: objectIdSchema.nullable().optional(),
+});
+
+/** A branch's kitchen counters, in order (the first takes dishes no counter lists). `id` keeps an existing one. */
+export const kitchenStationsSchema = z.strictObject({
+  stations: z
+    .array(
+      z.strictObject({
+        id: objectIdSchema.optional(),
+        name: name(40),
+        categoryIds: z.array(objectIdSchema).max(200),
+      }),
+    )
+    .max(LIMITS.maxKitchenStations, `At most ${LIMITS.maxKitchenStations} counters`),
 });
 export const resetPasswordSchema = z.strictObject({ password: passwordSchema });
 
@@ -404,6 +420,8 @@ export type RestaurantUpdateInput = z.infer<typeof restaurantUpdateSchema>;
 export type RestaurantSettingsInput = z.infer<typeof restaurantSettingsSchema>;
 export type BranchCreateInput = z.infer<typeof branchCreateSchema>;
 export type UserCreateInput = z.infer<typeof userCreateSchema>;
+export type UserUpdateInput = z.infer<typeof userUpdateSchema>;
+export type KitchenStationsInput = z.infer<typeof kitchenStationsSchema>;
 export type CategoryCreateInput = z.infer<typeof categoryCreateSchema>;
 export type MenuItemCreateInput = z.infer<typeof menuItemCreateSchema>;
 export type MenuItemUpdateInput = z.infer<typeof menuItemUpdateSchema>;

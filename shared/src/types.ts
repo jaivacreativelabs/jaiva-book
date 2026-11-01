@@ -37,6 +37,8 @@ export interface UserDTO {
   status: RecordStatus;
   restaurantIds: string[];
   branchIds: string[];
+  /** Kitchen logins: the counter whose orders they see; null → every counter */
+  kitchenStationId: string | null;
   lastLoginAt: string | null;
   createdAt: string;
 }
@@ -112,7 +114,18 @@ export interface BranchDTO {
   email: string;
   status: RecordStatus;
   kitchenDisplay: boolean;
+  kitchenStations: KitchenStationDTO[];
   createdAt: string;
+}
+
+/**
+ * A kitchen counter (Tiffin, Juice…): dishes of its categories go to it as their own ticket.
+ * Dishes of categories no counter lists go to the first counter.
+ */
+export interface KitchenStationDTO {
+  id: string;
+  name: string;
+  categoryIds: string[];
 }
 
 /** A branch the current user can operate, with what the billing UI needs. */
@@ -122,6 +135,8 @@ export interface BranchContextDTO {
   code: string;
   /** The branch uses the Kitchen Display (orders are sent to the kitchen board). */
   kitchenDisplay: boolean;
+  /** Its kitchen counters; empty → one kitchen for everything */
+  kitchenStations: { id: string; name: string }[];
   /** false after Close Shop: billing is locked until Open Shop */
   shopOpen: boolean;
   restaurant: { id: string; name: string; logoUrl: string | null; settings: RestaurantSettings };
@@ -301,6 +316,9 @@ export interface KitchenTicketDTO {
   statusAt: string;
   /** who marked it Served (a waiter or the kitchen) or handed the parcel over; "" until then */
   servedByName: string;
+  /** The kitchen counter it went to; null when the branch has one kitchen (or it was sent before counters) */
+  stationId: string | null;
+  stationName: string;
 }
 
 export interface TransactionItemDTO {

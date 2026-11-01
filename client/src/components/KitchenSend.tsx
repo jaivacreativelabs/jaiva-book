@@ -17,9 +17,14 @@ export function useSendToKitchen() {
     setSending(true);
     try {
       if (sync) await sync.flushNow();
-      const ticket = await api.post<KitchenTicketDTO | null>(`/bills/${draftId}/kitchen`, orderType ? { orderType } : undefined);
-      if (ticket) toast.success(`${ticket.tableLabel ? 'Sent to kitchen' : `${ticketPlace(ticket)} sent`}: ${ticket.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')}`);
-      else toast.info('Nothing new – everything is already in the kitchen');
+      // One ticket per kitchen counter when the restaurant has counters.
+      const tickets = await api.post<KitchenTicketDTO[]>(`/bills/${draftId}/kitchen`, orderType ? { orderType } : undefined);
+      const [first] = tickets;
+      if (first) {
+        const where = tickets.some((t) => t.stationName) ? tickets.map((t) => t.stationName).join(' + ') : 'kitchen';
+        const items = tickets.flatMap((t) => t.items.map((i) => `${i.quantity}× ${i.name}`)).join(', ');
+        toast.success(`${first.tableLabel ? `Sent to ${where}` : `${ticketPlace(first)} sent`}: ${items}`);
+      } else toast.info('Nothing new – everything is already in the kitchen');
       return true;
     } catch (err) {
       toast.error(err);

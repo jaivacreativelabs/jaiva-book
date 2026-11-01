@@ -50,7 +50,19 @@ function openKitchenSlip(ticketId: string, branchId: string) {
   window.open(`/print/kitchen/${ticketId}?branch=${branchId}&autoprint=1`, '_blank', 'noopener,width=420,height=640');
 }
 
-function TicketCard({ ticket, branchId, now, canHandOver }: { ticket: KitchenTicketDTO; branchId: string; now: number; canHandOver: boolean }) {
+function TicketCard({
+  ticket,
+  branchId,
+  now,
+  canHandOver,
+  showStation,
+}: {
+  ticket: KitchenTicketDTO;
+  branchId: string;
+  now: number;
+  canHandOver: boolean;
+  showStation: boolean;
+}) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -89,6 +101,7 @@ function TicketCard({ ticket, branchId, now, canHandOver }: { ticket: KitchenTic
           </div>
           <TicketPlace ticket={ticket} className="kds-ticket-where" />
           {ticket.createdByName && <div className="kds-ticket-by">by {ticket.createdByName}</div>}
+          {showStation && ticket.stationName && <span className="kds-station">{ticket.stationName}</span>}
         </div>
         <span className={cx('kds-timer', minutes >= 20 ? 'late' : minutes >= 10 && 'slow')} title={`Ordered ${formatDateTime(ticket.createdAt)}`}>
           <Timer size={13} /> {minutes < 1 ? 'now' : `${minutes}m`}
@@ -130,6 +143,11 @@ export function KitchenPage() {
   const branchId = activeBranch!.id;
   const canHandOver = user?.role === 'RESTAURANT_ADMIN';
   const now = useNow();
+  // Kitchen counters: a counter's login only gets its own tickets (from the server); everyone
+  // else can narrow the board to one counter.
+  const stations = activeBranch!.kitchenStations;
+  const myStation = user?.role === 'KITCHEN' ? stations.find((s) => s.id === user.kitchenStationId) : undefined;
+  const [station, setStation] = useState('');
   const board = useQuery({
     queryKey: boardKey(branchId),
     queryFn: () => api.get<KitchenTicketDTO[]>('/kitchen/tickets'),
@@ -148,11 +166,25 @@ export function KitchenPage() {
     );
   }
 
-  const tickets = board.data ?? [];
+  const tickets = (board.data ?? []).filter((t) => !station || t.stationId === station);
+  const showStation = !myStation && stations.length > 0;
   return (
     <div className="page kds-page">
       <StaffTabs />
-      <PageHeader title="Kitchen Display" subtitle="Live order tickets · New → Preparing → Ready" />
+      <PageHeader
+        title={myStation ? `Kitchen Display · ${myStation.name}` : 'Kitchen Display'}
+        subtitle={myStation ? `Orders for the ${myStation.name} counter · New → Preparing → Ready` : 'Live order tickets · New → Preparing → Ready'}
+      />
+      {showStation && stations.length > 1 && (
+        <div className="chips kds-stations" role="radiogroup" aria-label="Kitchen counter">
+          {[{ id: '', name: 'All counters' }, ...stations].map((s) => (
+            <button key={s.id} type="button" role="radio" aria-checked={station === s.id} className={cx('chip chip-sm', station === s.id && 'active')} onClick={() => setStation(s.id)}>
+              {s.name}
+              {s.id && <span className="kds-count">{(board.data ?? []).filter((t) => t.stationId === s.id).length}</span>}
+            </button>
+          ))}
+        </div>
+      )}
       {board.isLoading ? (
         <Loading label="Loading tickets…" />
       ) : board.isError ? (
@@ -172,7 +204,7 @@ export function KitchenPage() {
                   {list.length === 0 ? (
                     <p className="kds-empty">No tickets</p>
                   ) : (
-                    list.map((t) => <TicketCard key={t.id} ticket={t} branchId={branchId} now={now} canHandOver={canHandOver} />)
+                    list.map((t) => <TicketCard key={t.id} ticket={t} branchId={branchId} now={now} canHandOver={canHandOver} showStation={showStation} />)
                   )}
                 </div>
               </section>
@@ -227,6 +259,7 @@ export function PrintKitchenTicketPage() {
       <div className="slip">
         <h1>KITCHEN ORDER</h1>
         <div className="c">#{t.number}</div>
+        {t.stationName && <div className="c big">{t.stationName} counter</div>}
         <div className="rule" />
         <div className="big">{ticketPlace(t)}</div>
         {t.billNumber && !t.tableLabel && <div>Bill: {t.billNumber}</div>}

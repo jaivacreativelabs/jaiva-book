@@ -31,6 +31,7 @@ export function toUserDTO(u: AuthUser): UserDTO {
     status: u.status,
     restaurantIds: u.restaurantIds.map(String),
     branchIds: u.branchIds.map(String),
+    kitchenStationId: u.kitchenStationId ? String(u.kitchenStationId) : null,
     lastLoginAt: iso(u.lastLoginAt),
     createdAt: iso(u.createdAt) ?? '',
   };
@@ -71,6 +72,7 @@ export function toBranchDTO(b: BranchLean & { createdAt?: Date }): BranchDTO {
     email: b.email ?? '',
     status: b.status,
     kitchenDisplay: b.kitchenDisplay ?? false,
+    kitchenStations: (b.kitchenStations ?? []).map((s) => ({ id: String(s._id), name: s.name, categoryIds: s.categoryIds.map(String) })),
     createdAt: iso(b.createdAt) ?? '',
   };
 }

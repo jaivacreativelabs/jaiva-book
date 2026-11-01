@@ -23,6 +23,7 @@ timestamps unless noted.
 | role | `SUPER_ADMIN` \| `RESTAURANT_ADMIN` \| `KITCHEN` | enum validated by Mongoose and Zod; `KITCHEN` = Kitchen Display of one branch only |
 | restaurantIds | ObjectId[] | derived server-side from `branchIds` |
 | branchIds | ObjectId[] | branches the Restaurant Admin may operate |
+| kitchenStationId | ObjectId \| null | Kitchen logins: the branch kitchen counter they work (`branches.kitchenStations._id`); null = every counter |
 | status | `ACTIVE` \| `INACTIVE` | |
 | tokenVersion | number | incremented on deactivate / password reset → old sessions die |
 | lastLoginAt | Date | |
@@ -57,6 +58,7 @@ Indexes: `{ nameKey: 1 }` unique.
 | address, phone, email | string | |
 | status | `ACTIVE` \| `INACTIVE` | |
 | kitchenDisplay | boolean | Kitchen Display board on for this branch (Super Admin switch, default off) |
+| kitchenStations | `{ _id, name, categoryIds[] }[]` | kitchen counters (Tiffin, Juice…), in order. Each send makes one ticket per counter; dishes of categories no counter lists go to the first. Empty = one kitchen |
 
 Indexes: `{ restaurantId: 1, code: 1 }` unique, `{ restaurantId: 1, nameKey: 1 }` unique.
 
@@ -155,6 +157,8 @@ Indexes:
 | priority | boolean | starred tickets are listed first |
 | statusAt | Date | when it entered the current status |
 | createdBy, createdByName | | |
+| stationId, stationName | | the kitchen counter it went to; null / "" for a branch with one kitchen |
+| servedBy, servedByName | | who served it (or handed the parcel over) |
 
 Drafts keep `kitchenSent` (the most ever sent per dish) and `kitchenRev`, so a ticket carries only new
 items and the same food is never sent twice. Deleting an order cancels its tickets that are still `NEW`.

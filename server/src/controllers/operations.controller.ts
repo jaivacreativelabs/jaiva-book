@@ -100,7 +100,7 @@ export const sendToKitchen = async (req: Request, res: Response) => {
 };
 export const kitchenBoard = async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ data: await kitchen.listBoard(getBranchScope(req)) });
+  res.json({ data: await kitchen.listBoard(currentUser(req), getBranchScope(req)) });
 };
 export const kitchenTicket = async (req: Request, res: Response) => {
   res.json({ data: await kitchen.getTicket(getBranchScope(req), id(req)) });
@@ -124,10 +124,10 @@ export const handOverParcel = async (req: Request, res: Response) => {
 };
 export const servedTickets = async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.json({ data: await kitchen.listServed(getBranchScope(req), parse(servedQuerySchema, req.query).date) });
+  res.json({ data: await kitchen.listServed(currentUser(req), getBranchScope(req), parse(servedQuerySchema, req.query).date) });
 };
 export const kitchenTicketPriority = async (req: Request, res: Response) => {
-  res.json({ data: await kitchen.setTicketPriority(getBranchScope(req), id(req), parse(kitchenPrioritySchema, req.body).priority) });
+  res.json({ data: await kitchen.setTicketPriority(currentUser(req), getBranchScope(req), id(req), parse(kitchenPrioritySchema, req.body).priority) });
 };
 
 // Transactions

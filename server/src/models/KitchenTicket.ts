@@ -36,6 +36,9 @@ const kitchenTicketSchema = new Schema(
     createdByName: { type: String, default: '' },
     servedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     servedByName: { type: String, default: '' },
+    // The kitchen counter it went to (null: the branch has one kitchen, or older tickets)
+    stationId: { type: Schema.Types.ObjectId, default: null },
+    stationName: { type: String, default: '' },
   },
   { timestamps: true },
 );

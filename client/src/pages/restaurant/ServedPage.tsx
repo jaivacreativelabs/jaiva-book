@@ -32,6 +32,7 @@ function ServedCard({ ticket }: { ticket: KitchenTicketDTO }) {
             {ticket.priority && <Star size={15} className="kds-star-on" aria-label="Priority" />}
           </div>
           {ticket.billNumber && <div className="kds-ticket-by">Bill {ticket.billNumber}</div>}
+          {ticket.stationName && <span className="kds-station">{ticket.stationName}</span>}
         </div>
         <span className="served-at" title={`Served ${formatDate(ticket.statusAt)}, ${formatTime(ticket.statusAt)}`}>
           {formatTime(ticket.statusAt)}

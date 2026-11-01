@@ -86,7 +86,7 @@ describe('merge two groups', () => {
     expect(merged.totals.grandTotal).toBe(3 * 3000 + 5000 + 2 * 2500);
     // Anu's food was already sent: it stays sent, only Bala's is new.
     expect(merged.kitchenSent).toEqual(expect.arrayContaining([{ menuItemId: w.items.idly, quantity: 1 }, { menuItemId: w.items.coffee, quantity: 2 }]));
-    const t = ok<Ticket | null>(await c.post(`/api/v1/bills/${b.id}/kitchen`));
+    const t = ok<Ticket[]>(await c.post(`/api/v1/bills/${b.id}/kitchen`))[0];
     expect(t!.items.map((i) => [i.name, i.quantity])).toEqual([['Idly', 2], ['Dosa', 1]]);
     expect((await board()).filter((x) => x.draftId === b.id).length).toBe(2);
 
@@ -129,8 +129,8 @@ describe('split a group', () => {
     expect([res.source.guestCount, res.created.guestCount, res.created.groupName, res.created.tableLabel]).toEqual([2, 1, 'Kid', 'T4']);
     expect(res.source.totals.grandTotal + res.created.totals.grandTotal).toBe(4 * 3000 + 2 * 3500 + 5000);
     // Both halves were already sent – nothing new for the kitchen.
-    expect(ok(await c.post(`/api/v1/bills/${g.id}/kitchen`))).toBeNull();
-    expect(ok(await c.post(`/api/v1/bills/${res.created.id}/kitchen`))).toBeNull();
+    expect(ok(await c.post(`/api/v1/bills/${g.id}/kitchen`))).toEqual([]);
+    expect(ok(await c.post(`/api/v1/bills/${res.created.id}/kitchen`))).toEqual([]);
 
     const paid = await c.post(`/api/v1/bills/${res.created.id}/finalize`, { version: res.created.version, paymentMethod: 'UPI', idempotencyKey: key() });
     expect(paid.status).toBe(201);

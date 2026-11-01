@@ -10,6 +10,8 @@ const userSchema = new Schema(
     role: { type: String, enum: ROLES, required: true, immutable: true },
     restaurantIds: { type: [{ type: Schema.Types.ObjectId, ref: 'Restaurant' }], default: [] },
     branchIds: { type: [{ type: Schema.Types.ObjectId, ref: 'Branch' }], default: [] },
+    // Kitchen logins: the branch's kitchen counter they work (null → every counter)
+    kitchenStationId: { type: Schema.Types.ObjectId, default: null },
     status: { type: String, enum: RECORD_STATUSES, default: 'ACTIVE' },
     tokenVersion: { type: Number, default: 0 },
     lastLoginAt: { type: Date, default: null },

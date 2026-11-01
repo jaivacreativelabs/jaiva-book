@@ -16,6 +16,7 @@ export interface AuthUser {
   status: RecordStatus;
   restaurantIds: Types.ObjectId[];
   branchIds: Types.ObjectId[];
+  kitchenStationId?: Types.ObjectId | null;
   tokenVersion: number;
   lastLoginAt?: Date | null;
   createdAt?: Date;

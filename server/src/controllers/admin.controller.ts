@@ -7,6 +7,7 @@ import {
   dailyReportSendSchema,
   dailyReportSettingsSchema,
   demoAccountUpdateSchema,
+  kitchenStationsSchema,
   resetPasswordSchema,
   restaurantCreateSchema,
   restaurantSettingsSchema,
@@ -75,6 +76,9 @@ export const createBranch = async (req: Request, res: Response) => {
 };
 export const updateBranch = async (req: Request, res: Response) => {
   res.json({ data: await admin.updateBranch(currentUser(req), id(req), parse(branchUpdateSchema, req.body)) });
+};
+export const setKitchenStations = async (req: Request, res: Response) => {
+  res.json({ data: await admin.setKitchenStations(currentUser(req), id(req), parse(kitchenStationsSchema, req.body)) });
 };
 export const setBranchStatus = async (req: Request, res: Response) => {
   const { status } = parse(statusSchema, req.body);
