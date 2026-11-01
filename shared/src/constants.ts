@@ -1,8 +1,5 @@
 /** The app's name: every dashboard, the sign-in page and the browser tab. */
 export const APP_NAME = 'Jaiva';
-/** Jaiva Creative Labs wordmark and its "J" (square, for small spaces) – files in client/public. */
-export const APP_LOGO = '/jaiva-logo.png';
-export const APP_ICON = '/jaiva-icon.png';
 
 /**
  * SUPER_ADMIN: everything. RESTAURANT_ADMIN: one branch's billing, menu, tables, transactions.

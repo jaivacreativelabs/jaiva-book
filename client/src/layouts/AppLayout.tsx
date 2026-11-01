@@ -32,7 +32,7 @@ import { Loading } from '../components/ui';
 import { useRootClass } from '../hooks/useRootClass';
 import { ChangePasswordModal } from '../pages/auth/ChangePasswordModal';
 import { useAuth } from '../store/auth';
-import { APP_ICON, APP_LOGO, APP_NAME, placeName } from '@rb/shared';
+import { APP_NAME, placeName } from '@rb/shared';
 import { getSyncSummary, subscribeSyncSummary } from '../store/draftSync';
 import { useTopbar } from '../store/topbar';
 import { cx } from '../utils/format';
@@ -181,7 +181,7 @@ export function AppLayout() {
   const isSuper = user?.role === 'SUPER_ADMIN';
   const isKitchen = user?.role === 'KITCHEN';
   const isWaiter = user?.role === 'WAITER';
-  // Every dashboard carries the Jaiva logo; the restaurant's own name shows with the user (top right).
+  // Every dashboard carries the app's name; the restaurant's own name shows with the user (top right).
   const nav = isSuper
     ? ADMIN_NAV
     : isKitchen
@@ -203,7 +203,7 @@ export function AppLayout() {
     <div className={cx('app', bottomNav && 'has-bottom-nav')}>
       <div className="brand">
         <div style={{ minWidth: 0 }}>
-          <img className="brand-wordmark" src={APP_LOGO} alt={APP_NAME} />
+          <div className="brand-name">{APP_NAME}</div>
           <div className="brand-sub">{isSuper ? 'Super Admin Panel' : isKitchen ? 'Kitchen Display' : isWaiter ? 'Waiter' : 'Billing & POS'}</div>
         </div>
       </div>
@@ -213,7 +213,6 @@ export function AppLayout() {
             <MenuIcon />
           </button>
         )}
-        <img className="topbar-logo" src={APP_ICON} alt={APP_NAME} />
         {placeholder ? (
           <div className="search">
             <Search />

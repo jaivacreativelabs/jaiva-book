@@ -1,4 +1,4 @@
-import { APP_LOGO, APP_NAME, type DemoAccountDTO } from '@rb/shared';
+import { APP_NAME, type DemoAccountDTO } from '@rb/shared';
 import { useQuery } from '@tanstack/react-query';
 import { ChefHat, ConciergeBell, LogIn, Mail, Lock, ShieldCheck, Store, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
@@ -49,15 +49,12 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <section className="login-brand">
-        <div className="login-logo">
-          <img src={APP_LOGO} alt="Jaiva Creative Labs" />
-        </div>
         <h2>{APP_NAME} Billing</h2>
         <p>Billing, tables, menu and sales for every restaurant – in one place.</p>
       </section>
       <section className="login-form-wrap">
         <form className="login-form" onSubmit={submit}>
-          <img className="login-mobile-logo" src={APP_LOGO} alt="Jaiva Creative Labs" />
+          <div className="login-mobile-logo">{APP_NAME} Billing</div>
           <div>
             <h1>Sign in</h1>
             <p className="muted" style={{ marginTop: 6 }}>

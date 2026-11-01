@@ -130,15 +130,6 @@ html.app-open body {
   object-fit: cover;
   flex-shrink: 0;
 }
-/* The Jaiva Creative Labs wordmark across the sidebar's top */
-.brand .brand-wordmark {
-  display: block;
-  width: 100%;
-  max-width: 188px;
-  height: auto;
-  border-radius: 0;
-  margin-bottom: 4px;
-}
 /* Initials in place of a restaurant logo that was never uploaded */
 .logo-mark {
   display: grid;
@@ -2855,19 +2846,6 @@ html.app-open body {
   padding: 40px;
   text-align: center;
 }
-/* The Jaiva Creative Labs wordmark on a white card (its cyan would not show on the yellow) */
-.login-logo {
-  width: min(420px, 80%);
-  padding: 28px 32px;
-  border-radius: var(--radius-lg);
-  background: #fff;
-  box-shadow: 0 20px 60px rgb(120 90 0 / 0.25);
-}
-.login-logo img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
 .login-brand h2 {
   font-size: 1.6rem;
   color: #1a1d1a;
@@ -3001,7 +2979,6 @@ html.app-open body {
 /* Phone-only elements – hidden on larger screens */
 .tx-cards,
 .nav-toggle,
-.topbar-logo,
 .bottom-nav,
 .nav-backdrop,
 .bill-mobile-bar,
@@ -3041,13 +3018,6 @@ html.app-open body {
   }
   .nav-toggle {
     display: inline-grid;
-  }
-  .topbar-logo {
-    display: block;
-    width: 34px;
-    height: 34px;
-    object-fit: contain;
-    flex-shrink: 0;
   }
   .search input {
     height: 38px;
@@ -3499,11 +3469,13 @@ html.app-open body {
     padding: 24px 16px;
     align-items: start;
   }
+  /* Phones have no brand panel: the app's name above the form */
   .login-mobile-logo {
     display: block;
-    width: min(260px, 80%);
-    height: auto;
-    margin: 0 auto 8px;
+    text-align: center;
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--color-primary);
   }
   .login-form h1 {
     font-size: 1.6rem;
