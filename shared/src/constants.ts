@@ -1,3 +1,6 @@
+/** The app's name: every dashboard, the sign-in page and the browser tab. */
+export const APP_NAME = 'Jaiva';
+
 /**
  * SUPER_ADMIN: everything. RESTAURANT_ADMIN: one branch's billing, menu, tables, transactions.
  * KITCHEN: one branch's Kitchen Display only (no bills, sales or prices).

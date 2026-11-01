@@ -2846,10 +2846,18 @@ html.app-open body {
   padding: 40px;
   text-align: center;
 }
-.login-brand img {
+.login-brand img,
+.login-logo {
   width: min(320px, 70%);
   border-radius: 50%;
   box-shadow: 0 20px 60px rgb(120 90 0 / 0.25);
+}
+/* The app's initial as its mark ("J"), large on the sign-in page */
+.login-logo.logo-mark {
+  aspect-ratio: 1;
+  max-width: 240px;
+  background: #fff;
+  font-size: 7rem;
 }
 .login-brand h2 {
   font-size: 1.6rem;
@@ -3487,11 +3495,12 @@ html.app-open body {
     align-items: start;
   }
   .login-mobile-logo {
-    display: block;
+    display: grid;
     width: 84px;
     height: 84px;
     border-radius: 50%;
     margin: 0 auto 4px;
+    font-size: 2.2rem;
   }
   .login-form h1 {
     font-size: 1.6rem;

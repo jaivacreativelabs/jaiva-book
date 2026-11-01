@@ -1,9 +1,9 @@
-import type { DemoAccountDTO } from '@rb/shared';
+import { APP_NAME, type DemoAccountDTO } from '@rb/shared';
 import { useQuery } from '@tanstack/react-query';
 import { ChefHat, ConciergeBell, LogIn, Mail, Lock, ShieldCheck, Store, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Field, Spinner } from '../../components/ui';
+import { Field, LogoMark, Spinner } from '../../components/ui';
 import { api, errorMessage } from '../../services/api';
 import { useAuth } from '../../store/auth';
 import { homeFor } from '../../utils/roles';
@@ -49,13 +49,13 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <section className="login-brand">
-        <img src="/logo.jpeg" alt="Idly Tiffin House logo" />
-        <h2>Tiffin House Billing</h2>
+        <LogoMark className="login-logo" name={APP_NAME} />
+        <h2>{APP_NAME} Billing</h2>
         <p>Billing, tables, menu and sales for every restaurant – in one place.</p>
       </section>
       <section className="login-form-wrap">
         <form className="login-form" onSubmit={submit}>
-          <img className="login-mobile-logo" src="/logo.jpeg" alt="Idly Tiffin House" />
+          <LogoMark className="login-mobile-logo" name={APP_NAME} />
           <div>
             <h1>Sign in</h1>
             <p className="muted" style={{ marginTop: 6 }}>

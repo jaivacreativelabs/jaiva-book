@@ -32,7 +32,7 @@ import { Loading, LogoMark } from '../components/ui';
 import { useRootClass } from '../hooks/useRootClass';
 import { ChangePasswordModal } from '../pages/auth/ChangePasswordModal';
 import { useAuth } from '../store/auth';
-import { placeName } from '@rb/shared';
+import { APP_NAME, placeName } from '@rb/shared';
 import { getSyncSummary, subscribeSyncSummary } from '../store/draftSync';
 import { useTopbar } from '../store/topbar';
 import { cx } from '../utils/format';
@@ -181,10 +181,9 @@ export function AppLayout() {
   const isSuper = user?.role === 'SUPER_ADMIN';
   const isKitchen = user?.role === 'KITCHEN';
   const isWaiter = user?.role === 'WAITER';
-  // Branch staff see their restaurant's own logo and name (set by the Super Admin).
-  const ownRestaurant = isSuper ? null : activeBranch?.restaurant;
-  const brandLogo = ownRestaurant ? ownRestaurant.logoUrl : '/logo.jpeg';
-  const brandName = ownRestaurant?.name ?? 'Tiffin House';
+  // Every dashboard carries the app's name; the restaurant's own name shows with the user (top right).
+  const brandLogo = null;
+  const brandName = APP_NAME;
   const nav = isSuper
     ? ADMIN_NAV
     : isKitchen
