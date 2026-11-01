@@ -12,7 +12,7 @@ import { DishNote } from '../../components/DishNote';
 import { addItemToBill, FoodGrid, setBillNote, setBillQuantity } from '../../components/FoodGrid';
 import { FoodImage } from '../../components/FoodImage';
 import { useSendToKitchen } from '../../components/KitchenSend';
-import { Empty, Loading, SidePanel, Spinner, Stepper } from '../../components/ui';
+import { Empty, Loading, PageHeader, SidePanel, Spinner, Stepper } from '../../components/ui';
 import { useDraftSync } from '../../hooks/useDraftSync';
 import { useRootClass } from '../../hooks/useRootClass';
 import { api, errorMessage } from '../../services/api';
@@ -22,6 +22,7 @@ import { useToast } from '../../store/toast';
 import { usePageSearch } from '../../store/topbar';
 import { cx, formatMoney } from '../../utils/format';
 import { splitVariant } from '../../utils/menu';
+import { TableCard, TableLegend } from './TablesPage';
 
 /** Take Order | Ready to Serve – a waiter's phone has no sidebar, so the two pages link here. */
 export function WaiterTabs() {
@@ -87,37 +88,39 @@ export function WaiterOrderPage() {
 
 // ---------------- Tables ----------------
 
+/** The same floor plan as the admin's Tables page, with what each group has in the kitchen. */
 function WaiterTables({ onPick }: { onPick: (tableId: string) => void }) {
   const { activeBranch } = useAuth();
+  const search = usePageSearch('Search tables...');
   const tables = useWaiterTables(activeBranch!.id);
+  const q = search.trim().toLowerCase();
+  const visible = (tables.data?.tables ?? []).filter((t) => !q || t.label.toLowerCase().includes(q));
   return (
     <div className="page">
       <WaiterTabs />
+      <PageHeader title="Tables" subtitle="Tap a table to take its order" />
+      <TableLegend />
       {tables.isLoading ? (
         <Loading label="Loading tables…" />
       ) : tables.isError ? (
         <Empty title="Could not load tables">{errorMessage(tables.error)}</Empty>
+      ) : visible.length === 0 ? (
+        <Empty title={q ? 'No tables match your search' : 'No tables yet'} />
       ) : (
-        <div className="waiter-tables">
-          {tables.data!.tables.map((t) => (
-            <button key={t.id} className={cx('waiter-table', t.occupancy)} onClick={() => onPick(t.id)} aria-label={`Table ${t.label}`}>
-              <span className="waiter-table-head">
-                <span className="table-label">{t.label}</span>
-                <span className="muted">
-                  {t.seatsUsed}/{t.seats}
+        <div className="tables-grid">
+          {visible.map((t) => (
+            <TableCard key={t.id} table={t} selected={false} onClick={() => onPick(t.id)}>
+              {t.groups.some((g) => g.kitchenStatus || g.kitchenPending > 0) && (
+                <span className="table-card-kitchen">
+                  {t.groups.map((g) => (
+                    <span key={g.draftId} className="waiter-table-group">
+                      {t.groups.length > 1 && <span className="waiter-group-name">{g.groupName}</span>}
+                      <KitchenBadges group={g} />
+                    </span>
+                  ))}
                 </span>
-              </span>
-              {t.groups.length === 0 ? (
-                <span className="muted">{t.occupancy === 'RESERVED' ? 'Reserved' : 'Free'}</span>
-              ) : (
-                t.groups.map((g) => (
-                  <span key={g.draftId} className="waiter-table-group">
-                    <span className="waiter-group-name">{g.groupName}</span>
-                    <KitchenBadges group={g} />
-                  </span>
-                ))
               )}
-            </button>
+            </TableCard>
           ))}
         </div>
       )}

@@ -19,7 +19,7 @@ import {
 } from '@rb/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRightLeft, ChevronUp, CirclePlus, FileText, Merge, Minus, Pencil, Plus, Split, Trash2, Users, Utensils } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { TableIcon } from '../../components/badges';
 import { DiscountEditor } from '../../components/DiscountEditor';
@@ -67,14 +67,35 @@ function pillText(t: TableDTO) {
   }
 }
 
-function TableCard({ table, selected, onClick }: { table: TableDTO; selected: boolean; onClick: () => void }) {
+/** A table on the floor plan; `children` adds a line under the status (the waiter's kitchen badges). */
+export function TableCard({ table, selected, onClick, children }: { table: TableDTO; selected: boolean; onClick: () => void; children?: ReactNode }) {
   return (
     <button className={cx('table-card', table.occupancy, selected && 'selected')} onClick={onClick} aria-pressed={selected}>
       <span className="table-label">{table.label}</span>
       <span className="table-seats">{table.seats} Seats</span>
       <TableIllustration shape={table.shape} seats={table.seats} tone={table.occupancy} />
       <span className={cx('status-pill', table.occupancy)}>{pillText(table)}</span>
+      {children}
     </button>
+  );
+}
+
+export function TableLegend() {
+  return (
+    <div className="legend">
+      <span>
+        <i className="dot" style={{ background: 'var(--status-available)' }} /> Available
+      </span>
+      <span>
+        <i className="dot" style={{ background: 'var(--status-partial)' }} /> Partially Occupied
+      </span>
+      <span>
+        <i className="dot" style={{ background: 'var(--status-full)' }} /> Full
+      </span>
+      <span>
+        <i className="dot" style={{ background: 'var(--status-reserved)' }} /> Reserved
+      </span>
+    </div>
   );
 }
 
@@ -864,20 +885,7 @@ export function TablesPage() {
             </button>
           }
         />
-        <div className="legend">
-          <span>
-            <i className="dot" style={{ background: 'var(--status-available)' }} /> Available
-          </span>
-          <span>
-            <i className="dot" style={{ background: 'var(--status-partial)' }} /> Partially Occupied
-          </span>
-          <span>
-            <i className="dot" style={{ background: 'var(--status-full)' }} /> Full
-          </span>
-          <span>
-            <i className="dot" style={{ background: 'var(--status-reserved)' }} /> Reserved
-          </span>
-        </div>
+        <TableLegend />
         {tables.isLoading ? (
           <Loading label="Loading tables…" />
         ) : tables.isError ? (
