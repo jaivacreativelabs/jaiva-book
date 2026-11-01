@@ -1,9 +1,9 @@
-import { APP_NAME, type DemoAccountDTO } from '@rb/shared';
+import { APP_LOGO, APP_NAME, type DemoAccountDTO } from '@rb/shared';
 import { useQuery } from '@tanstack/react-query';
 import { ChefHat, ConciergeBell, LogIn, Mail, Lock, ShieldCheck, Store, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Field, LogoMark, Spinner } from '../../components/ui';
+import { Field, Spinner } from '../../components/ui';
 import { api, errorMessage } from '../../services/api';
 import { useAuth } from '../../store/auth';
 import { homeFor } from '../../utils/roles';
@@ -49,13 +49,15 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <section className="login-brand">
-        <LogoMark className="login-logo" name={APP_NAME} />
+        <div className="login-logo">
+          <img src={APP_LOGO} alt="Jaiva Creative Labs" />
+        </div>
         <h2>{APP_NAME} Billing</h2>
         <p>Billing, tables, menu and sales for every restaurant – in one place.</p>
       </section>
       <section className="login-form-wrap">
         <form className="login-form" onSubmit={submit}>
-          <LogoMark className="login-mobile-logo" name={APP_NAME} />
+          <img className="login-mobile-logo" src={APP_LOGO} alt="Jaiva Creative Labs" />
           <div>
             <h1>Sign in</h1>
             <p className="muted" style={{ marginTop: 6 }}>
