@@ -1,10 +1,11 @@
 /**
  * Kitchen Display: live order tickets of the branch in three columns – New, Preparing,
  * Ready. Tickets arrive when an order is sent from a table ("Add Items") or a bill is generated.
+ * Parcels (take away) are marked as such; when Ready the counter hands them over.
  */
-import { KITCHEN_BOARD_STATUSES, type KitchenTicketDTO } from '@rb/shared';
+import { isParcel, KITCHEN_BOARD_STATUSES, ticketPlace, type KitchenTicketDTO } from '@rb/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChefHat, Printer, Star, Timer } from 'lucide-react';
+import { ChefHat, Package, Printer, Star, Timer } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Empty, Loading, PageHeader, Spinner } from '../../components/ui';
@@ -23,8 +24,15 @@ const COLUMN: Record<BoardStatus, { title: string; action: string; tone: string 
 
 const boardKey = (branchId: string) => ['kitchen', branchId] as const;
 
-function where(t: KitchenTicketDTO) {
-  return t.tableLabel ? `Table ${t.tableLabel}${t.groupName ? ` · ${t.groupName}` : ''}` : 'Counter';
+/** Where the food goes, and for a billed counter order its bill number. */
+function TicketPlace({ ticket, className }: { ticket: KitchenTicketDTO; className: string }) {
+  return (
+    <div className={cx(className, isParcel(ticket) && 'parcel')}>
+      {isParcel(ticket) && <Package size={14} aria-hidden />}
+      {ticketPlace(ticket)}
+      {ticket.billNumber && !ticket.tableLabel && <span className="kds-bill-no">Bill {ticket.billNumber}</span>}
+    </div>
+  );
 }
 
 /** Re-renders every 30 s so the waiting times stay current. */
@@ -41,7 +49,7 @@ function openKitchenSlip(ticketId: string, branchId: string) {
   window.open(`/print/kitchen/${ticketId}?branch=${branchId}&autoprint=1`, '_blank', 'noopener,width=420,height=640');
 }
 
-function TicketCard({ ticket, branchId, now }: { ticket: KitchenTicketDTO; branchId: string; now: number }) {
+function TicketCard({ ticket, branchId, now, canHandOver }: { ticket: KitchenTicketDTO; branchId: string; now: number; canHandOver: boolean }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -65,7 +73,10 @@ function TicketCard({ ticket, branchId, now }: { ticket: KitchenTicketDTO; branc
     }
   };
   const advance = () => run(() => api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/advance`, { from: ticket.status }));
+  const handOver = () => run(() => api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/handed-over`));
   const togglePriority = () => run(() => api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/priority`, { priority: !ticket.priority }));
+  // A Ready parcel waits for the counter: admins can hand it over here, the kitchen only sees that it waits.
+  const parcelWaiting = status === 'READY' && isParcel(ticket);
 
   return (
     <article className={cx('kds-ticket', ticket.priority && 'priority')} aria-label={`Ticket ${ticket.number}`}>
@@ -75,7 +86,8 @@ function TicketCard({ ticket, branchId, now }: { ticket: KitchenTicketDTO; branc
             #{ticket.number}
             {ticket.priority && <Star size={15} className="kds-star-on" aria-label="Priority" />}
           </div>
-          <div className="kds-ticket-where">{where(ticket)}</div>
+          <TicketPlace ticket={ticket} className="kds-ticket-where" />
+          {ticket.createdByName && <div className="kds-ticket-by">by {ticket.createdByName}</div>}
         </div>
         <span className={cx('kds-timer', minutes >= 20 ? 'late' : minutes >= 10 && 'slow')} title={`Ordered ${formatDateTime(ticket.createdAt)}`}>
           <Timer size={13} /> {minutes < 1 ? 'now' : `${minutes}m`}
@@ -89,9 +101,17 @@ function TicketCard({ ticket, branchId, now }: { ticket: KitchenTicketDTO; branc
         ))}
       </ul>
       <footer className="kds-ticket-actions">
-        <button className={cx('btn btn-sm', status === 'READY' ? 'btn-outline-primary' : 'btn-primary')} onClick={advance} disabled={busy}>
-          {busy && <Spinner />} {COLUMN[status].action}
-        </button>
+        {!parcelWaiting ? (
+          <button className={cx('btn btn-sm', status === 'READY' ? 'btn-outline-primary' : 'btn-primary')} onClick={advance} disabled={busy}>
+            {busy && <Spinner />} {COLUMN[status].action}
+          </button>
+        ) : canHandOver ? (
+          <button className="btn btn-sm btn-outline-primary" onClick={handOver} disabled={busy}>
+            {busy && <Spinner />} Handed over
+          </button>
+        ) : (
+          <span className="kds-at-counter">Waiting at the counter</span>
+        )}
         <button className={cx('icon-btn', ticket.priority && 'active')} onClick={togglePriority} disabled={busy} title={ticket.priority ? 'Remove priority' : 'Mark as priority'} aria-pressed={ticket.priority}>
           <Star size={17} className={ticket.priority ? 'kds-star-on' : undefined} />
         </button>
@@ -104,8 +124,9 @@ function TicketCard({ ticket, branchId, now }: { ticket: KitchenTicketDTO; branc
 }
 
 export function KitchenPage() {
-  const { activeBranch } = useAuth();
+  const { activeBranch, user } = useAuth();
   const branchId = activeBranch!.id;
+  const canHandOver = user?.role === 'RESTAURANT_ADMIN';
   const now = useNow();
   const board = useQuery({
     queryKey: boardKey(branchId),
@@ -148,7 +169,7 @@ export function KitchenPage() {
                   {list.length === 0 ? (
                     <p className="kds-empty">No tickets</p>
                   ) : (
-                    list.map((t) => <TicketCard key={t.id} ticket={t} branchId={branchId} now={now} />)
+                    list.map((t) => <TicketCard key={t.id} ticket={t} branchId={branchId} now={now} canHandOver={canHandOver} />)
                   )}
                 </div>
               </section>
@@ -203,7 +224,8 @@ export function PrintKitchenTicketPage() {
         <h1>KITCHEN ORDER</h1>
         <div className="c">#{t.number}</div>
         <div className="rule" />
-        <div className="big">{where(t)}</div>
+        <div className="big">{ticketPlace(t)}</div>
+        {t.billNumber && !t.tableLabel && <div>Bill: {t.billNumber}</div>}
         <div>{formatDateTime(t.createdAt)}</div>
         <div>By: {t.createdByName}</div>
         {t.priority && <div className="big">*** PRIORITY ***</div>}

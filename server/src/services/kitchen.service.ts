@@ -2,19 +2,27 @@
  * Kitchen Display: order tickets per branch. A table order sends what was added since its last
  * ticket; generating a bill sends whatever has not gone to the kitchen yet. Only branches with
  * `kitchenDisplay` switched on (Super Admin) use it.
+ *
+ * Counter orders get a token for the day. Take-away ones are parcels: when Ready, the counter
+ * hands them over (stored as SERVED) instead of a waiter serving them.
  */
 import type { Types } from 'mongoose';
-import { KITCHEN_BOARD_STATUSES, KITCHEN_NEXT, type KitchenStatus, type KitchenTicketDTO } from '@rb/shared';
+import { KITCHEN_BOARD_STATUSES, KITCHEN_NEXT, type KitchenStatus, type KitchenTicketDTO, type OrderType } from '@rb/shared';
 import { env } from '../config/env.js';
 import type { AuthUser } from '../middleware/auth.js';
 import type { BranchScope } from '../middleware/scope.js';
-import { DraftModel, KitchenTicketModel, nextSequence, TableModel, type Draft, type KitchenTicket } from '../models/index.js';
+import { DraftModel, KitchenTicketModel, nextSequence, TableModel, TransactionModel, type Draft, type KitchenTicket } from '../models/index.js';
 import { todayIn } from '../utils/dates.js';
 import { AppError, conflict, notFound } from '../utils/errors.js';
+import { assertAdmin } from '../utils/roles.js';
 import { toObjectId } from '../utils/validate.js';
 
 type TicketLean = KitchenTicket & { _id: Types.ObjectId; createdAt: Date };
 type DraftLean = Draft & { _id: Types.ObjectId };
+
+/** Tickets from before order types count by their order: counter orders were parcels. */
+const orderTypeOf = (t: Pick<TicketLean, 'orderType' | 'type'>): OrderType => t.orderType ?? (t.type === 'TABLE' ? 'DINE_IN' : 'TAKEAWAY');
+const PARCEL = [{ orderType: 'TAKEAWAY' }, { orderType: null, type: 'COUNTER' }];
 
 export function toKitchenTicketDTO(t: TicketLean): KitchenTicketDTO {
   return {
@@ -25,6 +33,9 @@ export function toKitchenTicketDTO(t: TicketLean): KitchenTicketDTO {
     type: t.type,
     tableLabel: t.tableLabel ?? '',
     groupName: t.groupName ?? '',
+    orderType: orderTypeOf(t),
+    token: t.token ?? null,
+    billNumber: t.billNumber ?? '',
     items: t.items.map((i) => ({ menuItemId: String(i.menuItemId), name: i.name, quantity: i.quantity })),
     status: t.status,
     priority: t.priority,
@@ -50,9 +61,15 @@ function unsentItems(draft: DraftLean) {
 /**
  * Sends the not-yet-sent items of an order to the kitchen as one ticket. Returns null when there
  * is nothing new (or the branch does not use the Kitchen Display). Safe to call twice: the
- * `kitchenRev` check lets only one caller record the same items.
+ * `kitchenRev` check lets only one caller record the same items. `orderType` is New Bill's
+ * Dine In / Take Away before the bill exists; once billed, the bill's own one is used.
  */
-export async function sendToKitchen(actor: AuthUser, scope: BranchScope, draftId: string | Types.ObjectId): Promise<KitchenTicketDTO | null> {
+export async function sendToKitchen(
+  actor: AuthUser,
+  scope: BranchScope,
+  draftId: string | Types.ObjectId,
+  orderType?: OrderType,
+): Promise<KitchenTicketDTO | null> {
   if (!scope.branch.kitchenDisplay) return null;
   const draft = await DraftModel.findOne({ _id: toObjectId(String(draftId), 'bill'), branchId: scope.branch._id, status: { $ne: 'DELETED' } }).lean<DraftLean>();
   if (!draft) throw notFound('Bill');
@@ -75,6 +92,9 @@ export async function sendToKitchen(actor: AuthUser, scope: BranchScope, draftId
   const date = todayIn(env.APP_TIMEZONE).replaceAll('-', '');
   const seq = await nextSequence(`kot:${scope.branch._id}:${date}`);
   const table = draft.tableId ? await TableModel.findById(draft.tableId).select('label').lean<{ label: string }>() : null;
+  const bill = draft.transactionId
+    ? await TransactionModel.findById(draft.transactionId).select('billNumber orderType').lean<{ billNumber: string; orderType: OrderType | null }>()
+    : null;
   const [ticket] = await KitchenTicketModel.create([
     {
       restaurantId: scope.restaurant._id,
@@ -84,12 +104,30 @@ export async function sendToKitchen(actor: AuthUser, scope: BranchScope, draftId
       type: draft.type,
       tableLabel: table?.label ?? '',
       groupName: draft.type === 'TABLE' ? (draft.groupName ?? '') : '',
+      orderType: draft.type === 'TABLE' ? 'DINE_IN' : (bill?.orderType ?? orderType ?? 'TAKEAWAY'),
+      token: draft.type === 'COUNTER' ? await tokenFor(scope, draft, date) : null,
+      billNumber: bill?.billNumber ?? '',
       items,
       createdBy: actor._id,
       createdByName: actor.name,
     },
   ]);
   return toKitchenTicketDTO(ticket.toObject() as TicketLean);
+}
+
+/** A counter order's token: the next of the day on its first ticket, the same one after that. */
+async function tokenFor(scope: BranchScope, draft: DraftLean, date: string): Promise<number> {
+  if (draft.kitchenToken) return draft.kitchenToken;
+  const seq = await nextSequence(`token:${scope.branch._id}:${date}`);
+  const set = await DraftModel.updateOne({ _id: draft._id, kitchenToken: null }, { $set: { kitchenToken: seq } });
+  if (set.modifiedCount === 1) return seq;
+  const current = await DraftModel.findById(draft._id).select('kitchenToken').lean<{ kitchenToken: number | null }>();
+  return current?.kitchenToken ?? seq;
+}
+
+/** A bill was generated: its tickets show the bill number and New Bill's Dine In / Take Away. */
+export async function linkBill(draftId: Types.ObjectId, billNumber: string, orderType: OrderType): Promise<void> {
+  await KitchenTicketModel.updateMany({ draftId }, { $set: { billNumber, orderType } });
 }
 
 /** The board: every ticket still in the kitchen, priority first, then oldest first. */
@@ -114,6 +152,8 @@ export async function advanceTicket(actor: AuthUser, scope: BranchScope, id: str
   const next = KITCHEN_NEXT[from];
   if (!next) throw conflict('This ticket is already finished', 'INVALID_STATUS');
   const t = await findTicket(scope, id);
+  // A Ready parcel waits at the counter until the customer collects it.
+  if (from === 'READY' && orderTypeOf(t) === 'TAKEAWAY') assertAdmin(actor, 'Parcels are handed over at the counter');
   const updated = await KitchenTicketModel.findOneAndUpdate(
     { _id: t._id, status: from },
     { $set: { status: next, statusAt: new Date(), ...(next === 'SERVED' && { servedBy: actor._id, servedByName: actor.name }) } },
@@ -125,10 +165,10 @@ export async function advanceTicket(actor: AuthUser, scope: BranchScope, id: str
   return toKitchenTicketDTO(updated);
 }
 
-/** Waiter board: food the kitchen marked Ready, longest waiting first (priority on top). */
+/** Waiter board: food the kitchen marked Ready, longest waiting first (priority on top). Parcels go to the counter instead. */
 export async function listReady(scope: BranchScope): Promise<KitchenTicketDTO[]> {
   assertKitchenOn(scope);
-  const rows = await KitchenTicketModel.find({ branchId: scope.branch._id, status: 'READY' })
+  const rows = await KitchenTicketModel.find({ branchId: scope.branch._id, status: 'READY', $nor: PARCEL })
     .sort({ priority: -1, statusAt: 1 })
     .limit(200)
     .lean<TicketLean[]>();
@@ -137,6 +177,25 @@ export async function listReady(scope: BranchScope): Promise<KitchenTicketDTO[]>
 
 /** A waiter carried a Ready order to its table. */
 export function serveTicket(actor: AuthUser, scope: BranchScope, id: string): Promise<KitchenTicketDTO> {
+  return advanceTicket(actor, scope, id, 'READY');
+}
+
+/** New Bill: parcels the kitchen marked Ready, waiting to be collected (longest waiting first). */
+export async function listReadyParcels(actor: AuthUser, scope: BranchScope): Promise<KitchenTicketDTO[]> {
+  assertAdmin(actor);
+  assertKitchenOn(scope);
+  const rows = await KitchenTicketModel.find({ branchId: scope.branch._id, status: 'READY', $or: PARCEL })
+    .sort({ statusAt: 1 })
+    .limit(200)
+    .lean<TicketLean[]>();
+  return rows.map(toKitchenTicketDTO);
+}
+
+/** The counter gave a Ready parcel to its customer: it leaves every board, recording who handed it over. */
+export async function handOverParcel(actor: AuthUser, scope: BranchScope, id: string): Promise<KitchenTicketDTO> {
+  assertAdmin(actor, 'Parcels are handed over at the counter');
+  const t = await findTicket(scope, id);
+  if (orderTypeOf(t) !== 'TAKEAWAY') throw conflict('Only parcels are handed over at the counter', 'NOT_PARCEL');
   return advanceTicket(actor, scope, id, 'READY');
 }
 

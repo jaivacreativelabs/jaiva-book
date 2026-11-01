@@ -38,6 +38,7 @@ import { ConfirmDialog, Empty, Loading, Spinner } from '../../components/ui';
 import { useDraftSync } from '../../hooks/useDraftSync';
 import { useRootClass } from '../../hooks/useRootClass';
 import { KitchenSendButton, useSendToKitchen } from '../../components/KitchenSend';
+import { ReadyParcels } from '../../components/ReadyParcels';
 import { api, ApiError, apiSync, errorMessage } from '../../services/api';
 import { useCategories, useMenuItems } from '../../services/queries';
 import { useAuth } from '../../store/auth';
@@ -163,7 +164,7 @@ export function BillingView({
     if (!sync || !draft) return;
     const most = new Map(kitchenSent.map((s) => [s.menuItemId, s.quantity]));
     for (const l of local?.items ?? []) most.set(l.menuItemId, Math.max(most.get(l.menuItemId) ?? 0, l.quantity));
-    if (await kitchen.send(draft.id, sync)) setSentNow({ draftId: draft.id, sent: [...most].map(([menuItemId, quantity]) => ({ menuItemId, quantity })) });
+    if (await kitchen.send(draft.id, sync, askOrderType ? orderType : null)) setSentNow({ draftId: draft.id, sent: [...most].map(([menuItemId, quantity]) => ({ menuItemId, quantity })) });
   };
 
   const finalizeBody = (current: DraftDTO) => {
@@ -242,6 +243,7 @@ export function BillingView({
   return (
     <div className="billing">
       <section className="billing-main" aria-label="Food items">
+        {!tableDraftId && activeBranch!.kitchenDisplay && <ReadyParcels branchId={branchId} />}
         <FoodGrid branchId={branchId} search={search} qtyById={qtyById} editable={editable} onAdd={addItem} />
       </section>
 

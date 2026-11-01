@@ -3653,9 +3653,68 @@ html.app-open body {
   font-variant-numeric: tabular-nums;
 }
 .kds-ticket-where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
   color: var(--color-text-muted);
   font-size: 0.8125rem;
   margin-top: 2px;
+}
+/* Parcels stand out: the kitchen packs them, the counter hands them over */
+.kds-ticket-where.parcel {
+  color: var(--color-accent-purple);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.kds-bill-no {
+  color: var(--color-text-muted);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.kds-ticket-by {
+  color: var(--color-text-subtle);
+  font-size: 0.75rem;
+  margin-top: 2px;
+}
+.kds-at-counter {
+  flex: 1;
+  text-align: center;
+  color: var(--color-accent-purple);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+/* New Bill: parcels the kitchen marked Ready, to hand over */
+.parcel-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.parcel-strip-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--color-accent-purple);
+}
+.parcel-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-accent-purple);
+  background: var(--color-accent-purple-soft);
+  font-size: 0.875rem;
+}
+.parcel-chip strong {
+  font-variant-numeric: tabular-nums;
+}
+.parcel-chip .muted {
+  font-size: 0.8125rem;
 }
 .kds-star-on {
   color: var(--color-secondary);

@@ -1,21 +1,24 @@
 /** Kitchen Display: the Send to Kitchen button used on table groups and the counter bill. */
-import type { KitchenTicketDTO } from '@rb/shared';
+import { ticketPlace, type KitchenTicketDTO, type OrderType } from '@rb/shared';
 import { ChefHat } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../services/api';
 import { useToast } from '../store/toast';
 import { Spinner } from './ui';
 
-/** Sends what was added since the group's last kitchen ticket. Resolves true when the request worked. */
+/**
+ * Sends what was added since the group's last kitchen ticket. Resolves true when the request
+ * worked. New Bill passes its Dine In / Take Away so a parcel is marked as one.
+ */
 export function useSendToKitchen() {
   const toast = useToast();
   const [sending, setSending] = useState(false);
-  const send = async (draftId: string, sync?: { flushNow: () => Promise<void> } | null) => {
+  const send = async (draftId: string, sync?: { flushNow: () => Promise<void> } | null, orderType?: OrderType | null) => {
     setSending(true);
     try {
       if (sync) await sync.flushNow();
-      const ticket = await api.post<KitchenTicketDTO | null>(`/bills/${draftId}/kitchen`);
-      if (ticket) toast.success(`Sent to kitchen: ${ticket.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')}`);
+      const ticket = await api.post<KitchenTicketDTO | null>(`/bills/${draftId}/kitchen`, orderType ? { orderType } : undefined);
+      if (ticket) toast.success(`${ticket.tableLabel ? 'Sent to kitchen' : `${ticketPlace(ticket)} sent`}: ${ticket.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')}`);
       else toast.info('Nothing new – everything is already in the kitchen');
       return true;
     } catch (err) {

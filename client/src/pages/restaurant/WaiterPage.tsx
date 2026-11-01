@@ -1,8 +1,9 @@
 /**
  * Waiter board: food the kitchen marked Ready, so waiters know what to carry to which table.
- * Tapping Served clears the ticket and records who served it.
+ * Tapping Served clears the ticket and records who served it. Parcels are not here: the
+ * counter hands those over.
  */
-import type { KitchenTicketDTO } from '@rb/shared';
+import { ticketPlace, type KitchenTicketDTO } from '@rb/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellRing, Check, ConciergeBell, Star, Timer } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -13,10 +14,6 @@ import { useToast } from '../../store/toast';
 import { cx, formatDateTime } from '../../utils/format';
 
 const boardKey = (branchId: string) => ['waiter', branchId] as const;
-
-function where(t: KitchenTicketDTO) {
-  return t.tableLabel ? `Table ${t.tableLabel}${t.groupName ? ` · ${t.groupName}` : ''}` : 'Counter';
-}
 
 /** Re-renders every 30 s so the waiting times stay current. */
 function useNow() {
@@ -53,7 +50,7 @@ function ReadyCard({ ticket, branchId, now }: { ticket: KitchenTicketDTO; branch
     <article className={cx('kds-ticket waiter-ticket', ticket.priority && 'priority')} aria-label={`Ticket ${ticket.number}`}>
       <header className="kds-ticket-head">
         <div style={{ minWidth: 0 }}>
-          <div className="waiter-where">{where(ticket)}</div>
+          <div className="waiter-where">{ticketPlace(ticket)}</div>
           <div className="kds-ticket-no">
             #{ticket.number}
             {ticket.priority && <Star size={15} className="kds-star-on" aria-label="Priority" />}

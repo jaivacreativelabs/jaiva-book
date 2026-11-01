@@ -42,7 +42,7 @@ import { effectiveCategory, effectiveItem, restaurantSettings, toDraftDTO, toTra
 import { resolvePayments } from '../utils/payments.js';
 import { toObjectId } from '../utils/validate.js';
 import { audit } from './audit.service.js';
-import { cancelUnstarted, sendToKitchen } from './kitchen.service.js';
+import { cancelUnstarted, linkBill, sendToKitchen } from './kitchen.service.js';
 import { seatsInUse } from './tables.service.js';
 
 type DraftLean = Draft & { _id: Types.ObjectId; updatedAt?: Date };
@@ -506,9 +506,13 @@ export async function finalizeDraft(
       }
     });
     if (!result.replayed) {
-      // Whatever the kitchen has not seen yet goes now (the whole order for counter bills).
-      // The bill is already saved, so a kitchen problem must not fail it.
-      await sendToKitchen(actor, scope, draftId).catch((err) => console.error('[kitchen] could not send ticket:', err));
+      // Whatever the kitchen has not seen yet goes now (the whole order for counter bills); tickets
+      // sent before payment get the bill number. The bill is already saved, so a kitchen problem
+      // must not fail it.
+      const { billNumber, orderType } = result.transaction;
+      await linkBill(draftId, billNumber, orderType)
+        .then(() => sendToKitchen(actor, scope, draftId))
+        .catch((err) => console.error('[kitchen] could not send ticket:', err));
     }
     return result;
   } catch (err) {

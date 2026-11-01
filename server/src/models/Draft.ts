@@ -54,6 +54,8 @@ const draftSchema = new Schema(
       default: [],
     },
     kitchenRev: { type: Number, default: 0 },
+    // Counter orders: the day's token, given with the first kitchen ticket and kept by later ones.
+    kitchenToken: { type: Number, default: null },
     transactionId: { type: Schema.Types.ObjectId, ref: 'Transaction', default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     updatedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },

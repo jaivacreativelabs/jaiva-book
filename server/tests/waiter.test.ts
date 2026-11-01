@@ -48,6 +48,16 @@ describe('waiter board', () => {
     expect((await waiter.post(`/api/v1/waiter/tickets/${t.id}/served`)).status).toBe(409);
   });
 
+  it('parcels are not on the waiter board and a waiter cannot hand one over', async () => {
+    let d = ok<Draft>(await w.adminA1.get('/api/v1/bills/counter'));
+    d = ok<Draft>(await w.adminA1.put(`/api/v1/bills/${d.id}`, { version: d.version, items: [{ menuItemId: w.items.dosa, quantity: 1 }] }));
+    const t = ok<Ticket>(await w.adminA1.post(`/api/v1/bills/${d.id}/kitchen`, { orderType: 'TAKEAWAY' }));
+    for (const from of ['NEW', 'PREPARING']) ok(await w.adminA1.post(`/api/v1/kitchen/tickets/${t.id}/advance`, { from }));
+    expect(ok<Ticket[]>(await waiter.get('/api/v1/waiter/tickets'))).toEqual([]);
+    expect((await waiter.post(`/api/v1/waiter/tickets/${t.id}/served`)).status).toBe(403);
+    expect(ok<Ticket>(await w.adminA1.post(`/api/v1/kitchen/tickets/${t.id}/handed-over`)).status).toBe('SERVED');
+  });
+
   it('a waiter login opens nothing else', async () => {
     for (const url of ['/api/v1/kitchen/tickets', '/api/v1/transactions', '/api/v1/bills/counter', '/api/v1/tables', '/api/v1/menu/items', '/api/v1/expenses']) {
       expect((await waiter.get(url)).status, url).toBe(403);

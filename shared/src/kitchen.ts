@@ -1,4 +1,15 @@
 /** Kitchen Display helpers shared by the server and the billing screens. */
+import type { KitchenTicketDTO } from './types.js';
+
+/** A parcel: food packed to take away, handed over at the counter instead of served. */
+export const isParcel = (t: Pick<KitchenTicketDTO, 'orderType'>) => t.orderType === 'TAKEAWAY';
+
+/** Where a ticket's food goes: "Table T03 · Group 1", "PARCEL · Token 12" or "Dine In · Token 5". */
+export function ticketPlace(t: Pick<KitchenTicketDTO, 'tableLabel' | 'groupName' | 'orderType' | 'token'>): string {
+  if (t.tableLabel) return `Table ${t.tableLabel}${t.groupName ? ` · ${t.groupName}` : ''}`;
+  const kind = isParcel(t) ? 'PARCEL' : 'Dine In';
+  return t.token ? `${kind} · Token ${t.token}` : kind;
+}
 
 export interface KitchenQty {
   menuItemId: string;

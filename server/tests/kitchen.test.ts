@@ -17,6 +17,10 @@ interface Ticket {
   groupName: string;
   status: string;
   priority: boolean;
+  orderType: string;
+  token: number | null;
+  billNumber: string;
+  servedByName: string;
   items: { name: string; quantity: number }[];
 }
 
@@ -109,7 +113,7 @@ describe('sending orders', () => {
     ]);
     expect((await finalize(w.adminA1, d, 'UPI')).status).toBe(201);
     const last = (await board(w.adminA1)).at(-1)!;
-    expect([last.type, last.tableLabel]).toEqual(['COUNTER', '']);
+    expect([last.type, last.tableLabel, last.orderType, last.token]).toEqual(['COUNTER', '', 'TAKEAWAY', 1]);
     expect(lines(last)).toEqual([
       ['Vada', 2],
       ['Fresh Juice', 1],
@@ -159,9 +163,9 @@ describe('the pipeline', () => {
   });
 });
 
-describe('kitchen login', () => {
-  let cook: Client;
+let cook: Client;
 
+describe('kitchen login', () => {
   it('the Super Admin creates a Kitchen login for one branch', async () => {
     const body = { name: 'A1 Kitchen', email: 'kitchen.a1@test.local', password: PASSWORD, branchIds: [w.branchA1], role: 'KITCHEN' };
     expect((await w.adminA1.post('/api/v1/admin/users', body)).status).toBe(403);
@@ -188,5 +192,65 @@ describe('kitchen login', () => {
     const [t] = await board(cook);
     expect((await cook.post(`/api/v1/bills/${t.draftId ?? t.id}/kitchen`)).status).toBe(403);
     expect((await cook.post('/api/v1/bills/table-groups', { tableId: w.tables.t3, guestCount: 1 })).status).toBe(403);
+  });
+});
+
+describe('parcels', () => {
+  let parcel: Ticket;
+
+  it('a take-away order goes to the kitchen as a PARCEL with its token, then the bill number', async () => {
+    let d = ok<Draft>(await w.adminA1.get('/api/v1/bills/counter'));
+    d = await save(w.adminA1, d, [{ menuItemId: w.items.dosa, quantity: 2 }]);
+    // Sent before payment: the token now, the bill number once the bill is generated.
+    const early = ok<Ticket>(await w.adminA1.post(`/api/v1/bills/${d.id}/kitchen`, { orderType: 'TAKEAWAY' }));
+    expect([early.type, early.orderType, early.billNumber]).toEqual(['COUNTER', 'TAKEAWAY', '']);
+    expect(early.token).toBe(2);
+    d = await save(w.adminA1, d, [
+      { menuItemId: w.items.dosa, quantity: 2 },
+      { menuItemId: w.items.coffee, quantity: 1 },
+    ]);
+    const res = await w.adminA1.post(`/api/v1/bills/${d.id}/finalize`, { version: d.version, paymentMethod: 'CASH', orderType: 'TAKEAWAY', idempotencyKey: key() });
+    const { billNumber } = ok<{ transaction: { billNumber: string } }>(res, 201).transaction;
+    const mine = (await board(w.adminA1)).filter((t) => t.draftId === d.id);
+    expect(mine.map((t) => [lines(t), t.orderType, t.token, t.billNumber])).toEqual([
+      [[['Dosa', 2]], 'TAKEAWAY', 2, billNumber],
+      [[['Coffee', 1]], 'TAKEAWAY', 2, billNumber],
+    ]);
+    parcel = mine[0];
+  });
+
+  it('the next counter order gets the next token; a counter Dine In is not a parcel', async () => {
+    let d = ok<Draft>(await w.adminA1.get('/api/v1/bills/counter'));
+    d = await save(w.adminA1, d, [{ menuItemId: w.items.idly, quantity: 1 }]);
+    const res = await w.adminA1.post(`/api/v1/bills/${d.id}/finalize`, { version: d.version, paymentMethod: 'UPI', orderType: 'DINE_IN', idempotencyKey: key() });
+    expect(res.status).toBe(201);
+    const t = (await board(w.adminA1)).find((x) => x.draftId === d.id)!;
+    expect([t.orderType, t.token, t.billNumber]).toEqual(['DINE_IN', 3, res.body.data.transaction.billNumber]);
+  });
+
+  it('when Ready, only the counter hands it over – then it leaves every board', async () => {
+    for (const from of ['NEW', 'PREPARING']) ok(await cook.post(`/api/v1/kitchen/tickets/${parcel.id}/advance`, { from }));
+    expect((await cook.post(`/api/v1/kitchen/tickets/${parcel.id}/advance`, { from: 'READY' })).status).toBe(403);
+    expect((await cook.post(`/api/v1/kitchen/tickets/${parcel.id}/handed-over`)).status).toBe(403);
+    expect((await cook.get('/api/v1/kitchen/parcels')).status).toBe(403);
+    expect(ok<Ticket[]>(await w.adminA1.get('/api/v1/kitchen/parcels')).map((t) => t.id)).toEqual([parcel.id]);
+
+    const done = ok<Ticket>(await w.adminA1.post(`/api/v1/kitchen/tickets/${parcel.id}/handed-over`));
+    expect([done.status, done.servedByName]).toEqual(['SERVED', 'a1@test.local']);
+    expect(ok<Ticket[]>(await w.adminA1.get('/api/v1/kitchen/parcels'))).toEqual([]);
+    expect((await board(w.adminA1)).some((t) => t.id === parcel.id)).toBe(false);
+    expect((await w.adminA1.post(`/api/v1/kitchen/tickets/${parcel.id}/handed-over`)).status).toBe(409);
+  });
+
+  it('a table order is served, not handed over', async () => {
+    const t = (await board(w.adminA1)).find((x) => x.tableLabel)!;
+    const res = await w.adminA1.post(`/api/v1/kitchen/tickets/${t.id}/handed-over`);
+    expect([res.status, res.body.error.code]).toEqual([409, 'NOT_PARCEL']);
+  });
+
+  it('another branch never sees or hands over the parcel', async () => {
+    expect(ok<Ticket[]>(await w.adminA2.get('/api/v1/kitchen/parcels'))).toEqual([]);
+    expect((await w.adminA2.post(`/api/v1/kitchen/tickets/${parcel.id}/handed-over`)).status).toBe(404);
+    expect((await w.adminB1.post(`/api/v1/kitchen/tickets/${parcel.id}/handed-over`)).status).toBe(404);
   });
 });

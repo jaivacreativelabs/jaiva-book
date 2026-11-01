@@ -1,5 +1,5 @@
 import { model, Schema, type InferSchemaType } from 'mongoose';
-import { DRAFT_TYPES, KITCHEN_STATUSES } from '@rb/shared';
+import { DRAFT_TYPES, KITCHEN_STATUSES, ORDER_TYPES } from '@rb/shared';
 
 /** An order sent to a branch kitchen (KOT), moved through NEW → PREPARING → READY → SERVED. */
 const kitchenTicketSchema = new Schema(
@@ -11,6 +11,10 @@ const kitchenTicketSchema = new Schema(
     type: { type: String, enum: DRAFT_TYPES, required: true },
     tableLabel: { type: String, default: '' },
     groupName: { type: String, default: '' },
+    // Older tickets have none: a counter order then counts as a parcel (see toKitchenTicketDTO).
+    orderType: { type: String, enum: ORDER_TYPES, default: null },
+    token: { type: Number, default: null },
+    billNumber: { type: String, default: '' },
     items: {
       type: [
         new Schema(

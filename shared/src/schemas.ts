@@ -109,6 +109,8 @@ export const branchUpdateSchema = branchCreateSchema.omit({ restaurantId: true }
 
 export const kitchenAdvanceSchema = z.strictObject({ from: z.enum(KITCHEN_STATUSES) });
 export const kitchenPrioritySchema = z.strictObject({ priority: z.boolean() });
+/** Send to Kitchen: New Bill says whether the order is dine-in or a parcel (table orders are dine-in). */
+export const kitchenSendSchema = z.strictObject({ orderType: z.enum(ORDER_TYPES).optional() });
 
 // ---------- Users (Restaurant Admins only) ----------
 // Branches are fully isolated: a Restaurant Admin manages exactly one branch. Only the
