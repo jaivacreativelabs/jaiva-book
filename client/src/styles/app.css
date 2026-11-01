@@ -1808,6 +1808,10 @@ html.app-open body {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+/* Waiters have Add Items only (no Generate Bill) */
+.group-actions.single {
+  grid-template-columns: 1fr;
+}
 .group-actions .btn {
   height: 50px;
   flex-direction: column;
@@ -3846,27 +3850,8 @@ html.app-open body {
   flex-wrap: wrap;
   gap: 4px;
 }
-.waiter-groups {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
-  align-items: start;
-}
-.waiter-group {
-  width: 100%;
-  background: var(--color-surface);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.waiter-group .group-icon {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
-}
-.waiter-group .group-name,
-.waiter-group .muted {
-  display: block;
+.group-head .waiter-badges {
+  margin-top: 4px;
 }
 .waiter-in-kitchen {
   color: var(--color-primary);

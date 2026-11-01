@@ -12,7 +12,7 @@ import { ApiError, api, errorMessage } from '../../services/api';
 import { useAuth } from '../../store/auth';
 import { useToast } from '../../store/toast';
 import { cx, formatDateTime } from '../../utils/format';
-import { WaiterTabs } from './WaiterOrderPage';
+import { WaiterTabs } from '../../components/WaiterTabs';
 
 const boardKey = (branchId: string) => ['waiter', branchId] as const;
 

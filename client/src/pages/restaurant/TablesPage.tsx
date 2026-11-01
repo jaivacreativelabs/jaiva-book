@@ -18,7 +18,7 @@ import {
   type TransactionDTO,
 } from '@rb/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRightLeft, ChevronUp, CirclePlus, FileText, Merge, Minus, Pencil, Plus, Split, Trash2, Users, Utensils } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, ChevronUp, CirclePlus, ConciergeBell, FileText, Merge, Minus, Pencil, Plus, Split, Trash2, Users, Utensils } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { TableIcon } from '../../components/badges';
@@ -38,6 +38,7 @@ import { splitVariant } from '../../utils/menu';
 import { DishNote } from '../../components/DishNote';
 import { addItemToBill, FoodGrid, setBillNote, setBillQuantity } from '../../components/FoodGrid';
 import { KitchenSendButton, useSendToKitchen } from '../../components/KitchenSend';
+import { KitchenBadges, WaiterTabs } from '../../components/WaiterTabs';
 import { useDraftSync } from '../../hooks/useDraftSync';
 import { useRootClass } from '../../hooks/useRootClass';
 import { MergeGroupModal, MoveGroupModal, SplitGroupModal, type GroupAction, type SplitChoice } from './TableGroupActions';
@@ -236,41 +237,50 @@ function GroupLines({
   onQty,
   onNote,
   sent = [],
+  lockSent = false,
 }: {
   lines: DraftItemDTO[];
   onQty: (id: string, quantity: number) => void;
   onNote?: (id: string, note: string) => void;
   sent?: KitchenQty[];
+  /** Waiters: what the kitchen already has cannot be lowered or removed (the admin does that). */
+  lockSent?: boolean;
 }) {
   if (lines.length === 0) return <span className="muted">No items yet</span>;
   const sentById = new Map(sent.map((s) => [s.menuItemId, s.quantity]));
   return (
     <div className="group-lines">
-      {lines.map((l) => (
-        <div key={l.menuItemId} className={cx('group-line', l.unavailable && 'unavailable')}>
-          <div className="thumb thumb-xs">
-            <FoodImage src={l.imageUrl} alt={l.name} />
-          </div>
-          <span className="group-line-name" title={l.name}>
-            {splitVariant(l.name).dish}
-            {splitVariant(l.name).variant && <small className="line-variant">{splitVariant(l.name).variant}</small>}
-            <small>{formatMoney(l.unitPrice * l.quantity)}</small>
-            {onNote && <DishNote dish={l.name} note={l.note} onChange={(n) => onNote(l.menuItemId, n)} disabled={(sentById.get(l.menuItemId) ?? 0) >= l.quantity} />}
-          </span>
-          <div className="qty">
-            <button onClick={() => onQty(l.menuItemId, l.quantity - 1)} aria-label={`Decrease ${l.name}`}>
-              <Minus size={15} />
+      {lines.map((l) => {
+        const inKitchen = Math.min(sentById.get(l.menuItemId) ?? 0, l.quantity);
+        return (
+          <div key={l.menuItemId} className={cx('group-line', l.unavailable && 'unavailable')}>
+            <div className="thumb thumb-xs">
+              <FoodImage src={l.imageUrl} alt={l.name} />
+            </div>
+            <span className="group-line-name" title={l.name}>
+              {splitVariant(l.name).dish}
+              {splitVariant(l.name).variant && <small className="line-variant">{splitVariant(l.name).variant}</small>}
+              <small>
+                {formatMoney(l.unitPrice * l.quantity)}
+                {lockSent && inKitchen > 0 && <span className="waiter-in-kitchen"> · {inKitchen} in kitchen</span>}
+              </small>
+              {onNote && <DishNote dish={l.name} note={l.note} onChange={(n) => onNote(l.menuItemId, n)} disabled={inKitchen >= l.quantity} />}
+            </span>
+            <div className="qty">
+              <button onClick={() => onQty(l.menuItemId, l.quantity - 1)} disabled={lockSent && l.quantity <= inKitchen} aria-label={`Decrease ${l.name}`}>
+                <Minus size={15} />
+              </button>
+              <output>{l.quantity}</output>
+              <button onClick={() => onQty(l.menuItemId, l.quantity + 1)} disabled={l.unavailable} aria-label={`Increase ${l.name}`}>
+                <Plus size={15} />
+              </button>
+            </div>
+            <button className="icon-btn plain danger-text" onClick={() => onQty(l.menuItemId, 0)} disabled={lockSent && inKitchen > 0} aria-label={`Remove ${l.name}`}>
+              <Trash2 />
             </button>
-            <output>{l.quantity}</output>
-            <button onClick={() => onQty(l.menuItemId, l.quantity + 1)} disabled={l.unavailable} aria-label={`Increase ${l.name}`}>
-              <Plus size={15} />
-            </button>
           </div>
-          <button className="icon-btn plain danger-text" onClick={() => onQty(l.menuItemId, 0)} aria-label={`Remove ${l.name}`}>
-            <Trash2 />
-          </button>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -362,7 +372,9 @@ function GroupCard({
   onSent: () => void;
   onAction: (action: GroupAction) => void;
 }) {
-  const { activeBranch } = useAuth();
+  const { activeBranch, user } = useAuth();
+  // Waiters take the order only: no bill, discount, delete or move / merge / split (the server refuses them too).
+  const isWaiter = user?.role === 'WAITER';
   // The bill itself, so its dishes, quantities and discount can be changed right here.
   const { sync, state } = useDraftSync(group.draftId, branchId);
   const local = state.local;
@@ -386,11 +398,14 @@ function GroupCard({
           <div className="muted">
             {group.guestCount} {group.guestCount === 1 ? 'Person' : 'People'}
           </div>
+          {isWaiter && <KitchenBadges group={group} />}
         </div>
         <div className="group-amount num">{formatMoney(total)}</div>
-        <button className="icon-btn plain" onClick={onDelete} aria-label={`Delete ${group.groupName}`} title="Delete this group's bill">
-          <Trash2 />
-        </button>
+        {!isWaiter && (
+          <button className="icon-btn plain" onClick={onDelete} aria-label={`Delete ${group.groupName}`} title="Delete this group's bill">
+            <Trash2 />
+          </button>
+        )}
       </div>
       {state.status === 'error' && <div className="alert alert-warning">Not saved – retrying</div>}
       {state.message && (state.status === 'conflict' || state.status === 'rejected') && <div className="alert alert-warning">{state.message}</div>}
@@ -400,6 +415,7 @@ function GroupCard({
           onQty={setQty}
           onNote={activeBranch!.kitchenDisplay ? (id, note) => sync?.update((b) => setBillNote(b, id, note)) : undefined}
           sent={kitchen.sent}
+          lockSent={isWaiter}
         />
       ) : (
         // Until the bill has loaded: a glimpse of its dishes.
@@ -418,19 +434,23 @@ function GroupCard({
           )}
         </div>
       )}
-      {sync && local && local.items.length > 0 && <GroupDiscount draftId={group.draftId} sync={sync} discount={local.discount} amount={totals?.discountAmount ?? 0} />}
-      <div className="group-actions">
+      {!isWaiter && sync && local && local.items.length > 0 && (
+        <GroupDiscount draftId={group.draftId} sync={sync} discount={local.discount} amount={totals?.discountAmount ?? 0} />
+      )}
+      <div className={cx('group-actions', isWaiter && 'single')}>
         <button className="btn btn-outline-primary" onClick={onAddItems}>
           <Utensils /> Add Items
         </button>
-        <button className="btn btn-primary" onClick={() => onGenerate(total)} disabled={itemCount === 0}>
-          <FileText /> Generate Bill
-        </button>
+        {!isWaiter && (
+          <button className="btn btn-primary" onClick={() => onGenerate(total)} disabled={itemCount === 0}>
+            <FileText /> Generate Bill
+          </button>
+        )}
       </div>
       {activeBranch!.kitchenDisplay && itemCount > 0 && (
         <KitchenSendButton pending={local ? kitchen.pending : group.kitchenPending} sending={kitchen.sending} onSend={() => void kitchen.sendToKitchen()} />
       )}
-      <GroupMoreActions itemCount={itemCount} guestCount={group.guestCount} onAction={onAction} />
+      {!isWaiter && <GroupMoreActions itemCount={itemCount} guestCount={group.guestCount} onAction={onAction} />}
     </div>
   );
 }
@@ -518,7 +538,8 @@ function TableDetail({
 }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const { activeBranch } = useAuth();
+  const { activeBranch, user } = useAuth();
+  const isWaiter = user?.role === 'WAITER';
   const branchId = activeBranch!.id;
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -689,21 +710,25 @@ function TableDetail({
       }
       onClose={onClose}
       footer={
-        <div className="row">
-          <button className="link-btn" onClick={onEdit}>
-            <Pencil size={15} /> Edit table
-          </button>
-        </div>
+        !isWaiter && (
+          <div className="row">
+            <button className="link-btn" onClick={onEdit}>
+              <Pencil size={15} /> Edit table
+            </button>
+          </div>
+        )
       }
     >
       {table.status === 'RESERVED' && table.groups.length === 0 && (
         <div className="alert alert-warning">
           <TableIcon width={18} height={18} />
           <div className="stack" style={{ gap: 8 }}>
-            <span>This table is reserved. Mark it available when the guests arrive.</span>
-            <button className="btn btn-sm btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={markAvailable}>
-              Mark as Available
-            </button>
+            <span>{isWaiter ? 'This table is reserved. Ask the Restaurant Admin to free it when the guests arrive.' : 'This table is reserved. Mark it available when the guests arrive.'}</span>
+            {!isWaiter && (
+              <button className="btn btn-sm btn-secondary" style={{ alignSelf: 'flex-start' }} onClick={markAvailable}>
+                Mark as Available
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -801,10 +826,29 @@ const isPhone = () => window.matchMedia('(max-width: 768px)').matches;
  * Tables page. Serving a group (?order=<draftId>) happens right here: the right panel stays as it
  * is and only the left side changes from the tables to the menu.
  */
-export function TablesPage() {
+/** Waiter › Take Order: the Tables page itself (tap a table, add dishes, send the KOT). Needs the Kitchen Display. */
+export function WaiterTablesPage() {
   const { activeBranch } = useAuth();
+  if (!activeBranch!.kitchenDisplay) {
+    return (
+      <div className="page">
+        <WaiterTabs />
+        <Empty icon={<ConciergeBell />} title="Taking orders needs the Kitchen Display">
+          The Super Admin can switch the Kitchen Display on under Restaurants › Bills &amp; Kitchen.
+        </Empty>
+      </div>
+    );
+  }
+  return <TablesPage />;
+}
+
+export function TablesPage() {
+  const { activeBranch, user } = useAuth();
   const branchId = activeBranch!.id;
-  const tables = useTables(branchId);
+  // Waiter › Take Order is this page too, without billing and table management.
+  const isWaiter = user?.role === 'WAITER';
+  // Waiters watch the kitchen's Preparing / Ready on the cards, so refresh more often.
+  const tables = useTables(branchId, isWaiter ? 5_000 : undefined);
   const queryClient = useQueryClient();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
@@ -876,13 +920,16 @@ export function TablesPage() {
         />
       ) : (
       <div className="page">
+        <WaiterTabs />
         <PageHeader
           title="Tables"
-          subtitle="View and manage restaurant tables"
+          subtitle={isWaiter ? 'Tap a table to take its order' : 'View and manage restaurant tables'}
           actions={
-            <button className="btn btn-primary btn-lg" onClick={() => setPanel({ panel: 'add', table: null })}>
-              <CirclePlus /> Add Table
-            </button>
+            !isWaiter && (
+              <button className="btn btn-primary btn-lg" onClick={() => setPanel({ panel: 'add', table: null })}>
+                <CirclePlus /> Add Table
+              </button>
+            )
           }
         />
         <TableLegend />
@@ -897,7 +944,18 @@ export function TablesPage() {
         ) : (
           <div className="tables-grid">
             {visible.map((t) => (
-              <TableCard key={t.id} table={t} selected={t.id === selectedId} onClick={() => setPanel({ table: t.id, panel: null })} />
+              <TableCard key={t.id} table={t} selected={t.id === selectedId} onClick={() => setPanel({ table: t.id, panel: null })}>
+                {isWaiter && t.groups.some((g) => g.kitchenStatus || g.kitchenPending > 0) && (
+                  <span className="table-card-kitchen">
+                    {t.groups.map((g) => (
+                      <span key={g.draftId} className="waiter-table-group">
+                        {t.groups.length > 1 && <span className="waiter-group-name">{g.groupName}</span>}
+                        <KitchenBadges group={g} />
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </TableCard>
             ))}
           </div>
         )}
@@ -916,7 +974,7 @@ export function TablesPage() {
         </button>
       )}
 
-      {panel === 'add' && (
+      {panel === 'add' && !isWaiter && (
         <TableForm
           floors={floors}
           defaultFloor={floors[0] ?? 'Ground Floor'}
@@ -928,7 +986,7 @@ export function TablesPage() {
           }}
         />
       )}
-      {panel === 'edit' && selected && (
+      {panel === 'edit' && selected && !isWaiter && (
         <TableForm
           key={selected.id}
           initial={selected}

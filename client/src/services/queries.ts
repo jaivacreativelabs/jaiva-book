@@ -45,12 +45,12 @@ export function useMenuItems(scope: MenuScope, includeArchived = false) {
 
 export const tableKeys = { list: (branchId: string | null) => ['tables', branchId] as const };
 
-export function useTables(branchId: string | null) {
+export function useTables(branchId: string | null, refetchMs = 15_000) {
   return useQuery({
     queryKey: tableKeys.list(branchId),
     queryFn: () => api.get<TablesResponseDTO>('/tables', { branchId }),
     enabled: Boolean(branchId),
     // Other admins may seat guests or bill tables at the same time.
-    refetchInterval: 15_000,
+    refetchInterval: refetchMs,
   });
 }
