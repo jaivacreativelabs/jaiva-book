@@ -95,8 +95,8 @@ export const splitGroup = async (req: Request, res: Response) => {
 
 // Kitchen Display
 export const sendToKitchen = async (req: Request, res: Response) => {
-  const { orderType } = parse(kitchenSendSchema, req.body ?? {});
-  res.json({ data: await kitchen.sendToKitchen(currentUser(req), getBranchScope(req), id(req), orderType) });
+  parse(kitchenSendSchema, req.body ?? {}); // older apps still send an orderType: it is ignored
+  res.json({ data: await kitchen.sendToKitchen(currentUser(req), getBranchScope(req), id(req)) });
 };
 export const kitchenBoard = async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -176,4 +176,8 @@ export const openShop = async (req: Request, res: Response) => {
 };
 export const closeShop = async (req: Request, res: Response) => {
   res.json({ data: await shop.setShopOpen(currentUser(req), getBranchScope(req), false) });
+};
+export const draftKitchenTickets = async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ data: await kitchen.listForDraft(currentUser(req), getBranchScope(req), id(req)) });
 };

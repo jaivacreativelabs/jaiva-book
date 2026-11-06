@@ -88,7 +88,7 @@ describe('waiter takes table orders', () => {
     g = ok<Draft>(await waiter.put(`/api/v1/bills/${g.id}`, { version: g.version, items }));
   };
   const groupOnTables = async () => {
-    const { tables } = ok<{ tables: { groups: { draftId: string; kitchenStatus: string | null; kitchenPending: number }[] }[] }>(await waiter.get('/api/v1/tables'));
+    const { tables } = ok<{ tables: { groups: { draftId: string; kitchenStatus: string | null; kitchenPending: number; kitchenServed: unknown[] }[] }[] }>(await waiter.get('/api/v1/tables'));
     return tables.flatMap((t) => t.groups).find((x) => x.draftId === g.id)!;
   };
 
@@ -115,7 +115,18 @@ describe('waiter takes table orders', () => {
     expect(t.items.map((i) => [i.name, i.quantity])).toEqual([['Coffee', 1]]);
     expect(ok(await waiter.post(`/api/v1/bills/${g.id}/kitchen`))).toEqual([]); // nothing is ever sent twice
     for (const from of ['NEW', 'PREPARING']) ok(await w.adminA1.post(`/api/v1/kitchen/tickets/${t.id}/advance`, { from }));
-    expect((await groupOnTables()).kitchenStatus).toBe('READY');
+    expect(await groupOnTables()).toEqual(expect.objectContaining({ kitchenStatus: 'READY', kitchenServed: [] }));
+
+    // Served: the coffee shows as served, the dosas are still in the kitchen.
+    ok(await waiter.post(`/api/v1/waiter/tickets/${t.id}/served`));
+    expect(await groupOnTables()).toEqual(expect.objectContaining({ kitchenStatus: 'NEW', kitchenServed: [{ menuItemId: w.items.coffee, quantity: 1 }] }));
+
+    // KOT details: both KOTs of the order, oldest first, each with its own status.
+    const kots = ok<Ticket[]>(await waiter.get(`/api/v1/bills/${g.id}/kitchen`));
+    expect(kots.map((k) => [k.items.map((i) => i.name).join(), k.status])).toEqual([
+      ['Dosa', 'NEW'],
+      ['Coffee', 'SERVED'],
+    ]);
   });
 
   it('cannot lower what the kitchen already has, give discounts or rename', async () => {

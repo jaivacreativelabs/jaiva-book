@@ -24,17 +24,25 @@ const sentQty = (rows: { menuItemId: Types.ObjectId; quantity: number }[]) => ro
 
 /** Each group's food still in the kitchen, by the status that matters most to a waiter: Ready, then Preparing, then sent. */
 const KITCHEN_RANK: Record<BoardStatus, number> = { NEW: 1, PREPARING: 2, READY: 3 };
-async function kitchenStatusByDraft(drafts: DraftLean[]): Promise<Map<string, BoardStatus>> {
-  const out = new Map<string, BoardStatus>();
+type Kitchen = { status: Map<string, BoardStatus>; served: Map<string, Map<string, number>> };
+/** Per group: its kitchen status, and the portions of each dish already served (or handed over). */
+async function kitchenByDraft(drafts: DraftLean[]): Promise<Kitchen> {
+  const out: Kitchen = { status: new Map(), served: new Map() };
   if (!drafts.length) return out;
-  const open = await KitchenTicketModel.find({ draftId: { $in: drafts.map((d) => d._id) }, status: { $in: KITCHEN_BOARD_STATUSES } })
-    .select('draftId status')
-    .lean<{ draftId: Types.ObjectId; status: KitchenStatus }[]>();
-  for (const t of open) {
+  const tickets = await KitchenTicketModel.find({ draftId: { $in: drafts.map((d) => d._id) }, status: { $in: [...KITCHEN_BOARD_STATUSES, 'SERVED'] } })
+    .select('draftId status items.menuItemId items.quantity')
+    .lean<{ draftId: Types.ObjectId; status: KitchenStatus; items: { menuItemId: Types.ObjectId; quantity: number }[] }[]>();
+  for (const t of tickets) {
     const key = String(t.draftId);
+    if (t.status === 'SERVED') {
+      const dishes = out.served.get(key) ?? new Map<string, number>();
+      for (const i of t.items) dishes.set(String(i.menuItemId), (dishes.get(String(i.menuItemId)) ?? 0) + i.quantity);
+      out.served.set(key, dishes);
+      continue;
+    }
     const status = t.status as BoardStatus;
-    const prev = out.get(key);
-    if (!prev || KITCHEN_RANK[status] > KITCHEN_RANK[prev]) out.set(key, status);
+    const prev = out.status.get(key);
+    if (!prev || KITCHEN_RANK[status] > KITCHEN_RANK[prev]) out.status.set(key, status);
   }
   return out;
 }
@@ -45,7 +53,7 @@ export function occupancyOf(table: Pick<Table, 'seats' | 'status'>, seatsUsed: n
   return seatsUsed > 0 ? 'PARTIAL' : 'AVAILABLE';
 }
 
-export function toTableDTO(t: TableLean, drafts: DraftLean[], kitchen: Map<string, BoardStatus> = new Map()): TableDTO {
+export function toTableDTO(t: TableLean, drafts: DraftLean[], kitchen?: Kitchen): TableDTO {
   const groups = drafts
     .sort((a, b) => a.groupName.localeCompare(b.groupName, undefined, { numeric: true }))
     .map((d) => ({
@@ -59,7 +67,8 @@ export function toTableDTO(t: TableLean, drafts: DraftLean[], kitchen: Map<strin
       previewItems: d.items.slice(0, 4).map((i) => ({ name: i.name, imageUrl: i.imageUrl ?? null })),
       version: d.version,
       kitchenPending: kitchenPending(sentQty(d.items), sentQty(d.kitchenSent ?? [])),
-      kitchenStatus: kitchen.get(String(d._id)) ?? null,
+      kitchenStatus: kitchen?.status.get(String(d._id)) ?? null,
+      kitchenServed: [...(kitchen?.served.get(String(d._id)) ?? [])].map(([menuItemId, quantity]) => ({ menuItemId, quantity })),
     }));
   const seatsUsed = drafts.reduce((a, d) => a + d.guestCount, 0);
   return {
@@ -94,7 +103,7 @@ export async function listTables(scope: BranchScope, floor?: unknown): Promise<T
     const key = String(d.tableId);
     byTable.set(key, [...(byTable.get(key) ?? []), d]);
   }
-  const kitchen = scope.branch.kitchenDisplay ? await kitchenStatusByDraft(drafts) : undefined;
+  const kitchen = scope.branch.kitchenDisplay ? await kitchenByDraft(drafts) : undefined;
   return {
     floors,
     tables: tables
@@ -107,7 +116,7 @@ export async function getTableDTO(scope: BranchScope, tableId: Types.ObjectId): 
   const table = await TableModel.findOne({ _id: tableId, branchId: scope.branch._id }).lean<TableLean>();
   if (!table) throw notFound('Table');
   const drafts = await DraftModel.find({ tableId, status: 'ACTIVE', type: 'TABLE' }).lean<DraftLean[]>();
-  return toTableDTO(table, drafts, scope.branch.kitchenDisplay ? await kitchenStatusByDraft(drafts) : undefined);
+  return toTableDTO(table, drafts, scope.branch.kitchenDisplay ? await kitchenByDraft(drafts) : undefined);
 }
 
 async function getTableOr404(scope: BranchScope, id: string) {

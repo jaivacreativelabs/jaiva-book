@@ -92,6 +92,7 @@ const WAITER_CALLS: [string, string, RegExp][] = [
   ['GET', '/bills', new RegExp(`^/${ID}$`)],
   ['PUT', '/bills', new RegExp(`^/${ID}$`)],
   ['POST', '/bills', new RegExp(`^/${ID}/kitchen$`)],
+  ['GET', '/bills', new RegExp(`^/${ID}/kitchen$`)],
 ];
 const isCall = (req: Request, [method, router, path]: [string, string, RegExp]) =>
   req.method === method && req.baseUrl.endsWith(router) && path.test(req.path);

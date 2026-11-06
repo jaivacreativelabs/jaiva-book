@@ -147,7 +147,7 @@ transactions count as revenue.
 | GET | `/bills/:id` | draft (any status) |
 | PUT | `/bills/:id` | `{ version, items: [{ menuItemId, quantity }], customerName?, discount?, guestCount?, groupTag? }` – the server looks up names/prices, recomputes totals and returns the new version; `409 CONFLICT` on a stale version |
 | POST | `/bills/manual-sale` | `{ amount, paymentMethod, customerName?, idempotencyKey }` → `{ transaction }`. New Bill › Add Sale: a bill of just an amount (paise, ≥ ₹1) – one untaxed "Manual sale" line, `manual: true`, numbered like other bills, voidable but not editable |
-| POST | `/bills/:id/finalize` | `{ version, paymentMethod, payments?, orderType?, idempotencyKey }` → `{ transaction }`. `payments` = `[{ method, amount }]` (2–3 different modes) for a bill paid partly one way and partly another; the parts must add up to the bill (`400 SPLIT_MISMATCH`) and the main mode (most money) is stored as `paymentMethod`. Every transaction returns `payments` (one part when paid one way); payment-mode totals and filters count each part under its own mode. `orderType` (`DINE_IN` / `TAKEAWAY`) is asked on New Bill; table bills are always `DINE_IN`, and a counter bill without it is `TAKEAWAY`. Repeating the call with the same key returns the same transaction |
+| POST | `/bills/:id/finalize` | `{ version, paymentMethod, payments?, orderType?, idempotencyKey }` → `{ transaction }`. `payments` = `[{ method, amount }]` (2–3 different modes) for a bill paid partly one way and partly another; the parts must add up to the bill (`400 SPLIT_MISMATCH`) and the main mode (most money) is stored as `paymentMethod`. Every transaction returns `payments` (one part when paid one way); payment-mode totals and filters count each part under its own mode. The order type is fixed: New Bill (counter) bills are `TAKEAWAY`, table bills `DINE_IN`; an `orderType` sent by older apps is ignored. Repeating the call with the same key returns the same transaction |
 | DELETE | `/bills/:id?version=` | marks the draft `DELETED` (audit logged); never touches transactions |
 
 Items not available in the branch cannot be added or increased (`400 ITEM_UNAVAILABLE`); a
@@ -157,7 +157,8 @@ draft containing an item that became unavailable cannot be finalised until it is
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/bills/:id/kitchen` | sends the order's not-yet-sent items: an array with one new ticket, or one per kitchen counter; `[]` when nothing is new or the branch has no Kitchen Display. Generating a bill does this automatically |
+| POST | `/bills/:id/kitchen` | sends the order's not-yet-sent items (New Bill orders as parcels, table orders dine-in): an array with one new ticket, or one per kitchen counter; `[]` when nothing is new or the branch has no Kitchen Display. Generating a bill does this automatically |
+| GET | `/bills/:id/kitchen` | every KOT of that order, oldest first, in any status (the KOT Details popup on the Tables page). Waiters may call it for table orders |
 | GET | `/kitchen/tickets` | the board: `NEW`, `PREPARING`, `READY` tickets, priority first, then oldest. A Kitchen login with a counter gets only that counter's tickets, and moving another counter's ticket is 403 |
 | GET | `/kitchen/tickets/:id` | one ticket (kitchen slip printing; also works after it was served) |
 | POST | `/kitchen/tickets/:id/advance` | `{ from }` – one step on (READY → SERVED leaves the board). 409 `CONFLICT` with `details.current` if another screen moved it first |

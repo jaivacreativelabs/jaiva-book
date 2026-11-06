@@ -135,13 +135,13 @@ describe('finalising bills', () => {
     expect(next.items).toEqual([]);
   });
 
-  it('records Dine In / Take Away; bills without it count as takeaway', async () => {
+  it('New Bill is always Take Away, even when an older app says Dine In', async () => {
     const bill = async (orderType?: string) => {
       let d = await freshCounter();
       d = ok<Draft>(await w.adminA1.put(`/api/v1/bills/${d.id}`, { version: d.version, items: [{ menuItemId: w.items.idly, quantity: 1 }] }));
       return w.adminA1.post(`/api/v1/bills/${d.id}/finalize`, { version: d.version, paymentMethod: 'CASH', orderType, idempotencyKey: key() });
     };
-    expect((await bill('DINE_IN')).body.data.transaction.orderType).toBe('DINE_IN');
+    expect((await bill('DINE_IN')).body.data.transaction.orderType).toBe('TAKEAWAY');
     expect((await bill('TAKEAWAY')).body.data.transaction.orderType).toBe('TAKEAWAY');
     expect((await bill('PARCEL')).status).toBe(400);
     expect((await bill()).body.data.transaction.orderType).toBe('TAKEAWAY'); // also closes the PARCEL try's bill

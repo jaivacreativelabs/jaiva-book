@@ -1,12 +1,9 @@
 import {
   calculateBill,
   kitchenPending,
-  ORDER_TYPE_LABEL,
-  ORDER_TYPES,
   type DraftDTO,
   type KitchenQty,
   type MenuItemDTO,
-  type OrderType,
   type PaymentPart,
   type TransactionDTO,
 } from '@rb/shared';
@@ -19,11 +16,9 @@ import {
   FileText,
   Minus,
   Plus,
-  ShoppingBag,
   Trash2,
   TriangleAlert,
   UserRound,
-  UtensilsCrossed,
   X,
 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
@@ -48,24 +43,6 @@ import { useToast } from '../../store/toast';
 import { usePageSearch } from '../../store/topbar';
 import { cx, formatMoney, newIdempotencyKey, taxedItemsText, taxLabel } from '../../utils/format';
 import { splitVariant } from '../../utils/menu';
-
-const ORDER_ICON: Record<OrderType, typeof ShoppingBag> = { DINE_IN: UtensilsCrossed, TAKEAWAY: ShoppingBag };
-
-function OrderTypeButtons({ value, onChange, disabled }: { value: OrderType | null; onChange: (t: OrderType) => void; disabled?: boolean }) {
-  return (
-    <div className="pay-methods order-types" role="radiogroup" aria-label="Dine in or take away">
-      {ORDER_TYPES.map((t) => {
-        const Icon = ORDER_ICON[t];
-        return (
-          <button key={t} type="button" role="radio" aria-checked={value === t} className={cx('pay-btn', value === t && 'active')} onClick={() => onChange(t)} disabled={disabled}>
-            <Icon />
-            {ORDER_TYPE_LABEL[t]}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 /** `compact`: only the icon while all is well (room for Add Sale); a problem always shows its words. */
 function SyncStatus({ state, compact }: { state: DraftSyncState; compact?: boolean }) {
@@ -124,9 +101,6 @@ export function BillingView({
   const items = useMenuItems(scope);
   const [payment, setPayment] = useState<PaymentChoice | null>(null);
   const [splitParts, setSplitParts] = useState<PaymentPart[] | null>(null);
-  // New Bill asks Dine In / Take Away; a table's bill is always dine-in.
-  const askOrderType = !tableDraftId;
-  const [orderType, setOrderType] = useState<OrderType | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [manualSale, setManualSale] = useState(false);
@@ -167,12 +141,12 @@ export function BillingView({
     if (!sync || !draft) return;
     const most = new Map(kitchenSent.map((s) => [s.menuItemId, s.quantity]));
     for (const l of local?.items ?? []) most.set(l.menuItemId, Math.max(most.get(l.menuItemId) ?? 0, l.quantity));
-    if (await kitchen.send(draft.id, sync, askOrderType ? orderType : null)) setSentNow({ draftId: draft.id, sent: [...most].map(([menuItemId, quantity]) => ({ menuItemId, quantity })) });
+    if (await kitchen.send(draft.id, sync)) setSentNow({ draftId: draft.id, sent: [...most].map(([menuItemId, quantity]) => ({ menuItemId, quantity })) });
   };
 
   const finalizeBody = (current: DraftDTO) => {
     if (keyRef.current?.draftId !== current.id) keyRef.current = { draftId: current.id, key: newIdempotencyKey() };
-    return { version: current.version, ...paymentFields(payment!, splitParts), ...(askOrderType && orderType && { orderType }), idempotencyKey: keyRef.current.key };
+    return { version: current.version, ...paymentFields(payment!, splitParts), idempotencyKey: keyRef.current.key };
   };
   const billed = (current: DraftDTO, transaction: TransactionDTO) => {
     keyRef.current = null;
@@ -193,7 +167,7 @@ export function BillingView({
    * still being sent the tap cannot wait for it, so then it is done the usual way.
    */
   const generate = () => {
-    if (!sync || !payment || (payment === 'SPLIT' && !splitParts) || (askOrderType && !orderType)) return;
+    if (!sync || !payment || (payment === 'SPLIT' && !splitParts)) return;
     try {
       if (!sync.flushSync()) return void generateAfterSave();
       const current = sync.getState().draft!;
@@ -220,7 +194,6 @@ export function BillingView({
   const finishBill = (billed: DraftDTO) => {
     setPayment(null);
     setSplitParts(null);
-    setOrderType(null);
     setBillOpen(false);
     if (billed.type === 'TABLE') {
       onBackToTables(billed.tableId);
@@ -232,15 +205,9 @@ export function BillingView({
   const hasItems = (local?.items.length ?? 0) > 0;
   const itemCount = local?.items.reduce((a, i) => a + i.quantity, 0) ?? 0;
   const hasUnavailable = local?.items.some((i) => i.unavailable) ?? false;
-  const needOrderType = askOrderType && !orderType;
   const needSplit = payment === 'SPLIT' && !splitParts;
-  const hint = needOrderType
-    ? payment
-      ? 'Choose Dine In or Take Away'
-      : 'Choose Dine In / Take Away and payment'
-    : !payment
-      ? 'Select a payment method to generate the bill'
-      : needSplit && 'Enter how much was paid each way';
+  // New Bill is always Take Away and a table's bill Dine In – nothing to choose.
+  const hint = !payment ? 'Select a payment method to generate the bill' : needSplit && 'Enter how much was paid each way';
   const showBreakdown = Boolean(totals && (totals.discountAmount > 0 || totals.taxes.length > 0));
 
   return (
@@ -373,7 +340,6 @@ export function BillingView({
         </div>
 
         <div className="bill-foot">
-          {askOrderType && <OrderTypeButtons value={orderType} onChange={setOrderType} disabled={!editable || busy} />}
           {editable && (
             <div className="row" style={{ alignItems: 'flex-start' }}>
               <div style={{ flex: 1 }}>
@@ -418,7 +384,7 @@ export function BillingView({
           {payment === 'SPLIT' && hasItems && editable && <SplitPayment key={draft?.id} total={totals?.grandTotal ?? 0} onChange={setSplitParts} />}
           {activeBranch!.kitchenDisplay && editable && hasItems && <KitchenSendButton pending={toKitchen} sending={kitchen.sending} onSend={() => void sendToKitchen()} />}
           <PaymentButtons value={payment} onChange={setPayment} disabled={!editable || busy} allowSplit />
-          <button className="btn btn-primary btn-lg btn-block" onClick={generate} disabled={!editable || !hasItems || !payment || needSplit || needOrderType || busy || hasUnavailable}>
+          <button className="btn btn-primary btn-lg btn-block" onClick={generate} disabled={!editable || !hasItems || !payment || needSplit || busy || hasUnavailable}>
             {busy ? <Spinner /> : <FileText />} Generate Bill
           </button>
           {/* The hint's line is always kept, so Cash / UPI / Card and Generate Bill never jump when it shows or hides. */}

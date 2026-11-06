@@ -181,6 +181,7 @@ export function createApiRouter(): Router {
   billsRouter.put('/:id', ops.updateDraft);
   billsRouter.post('/:id/finalize', ops.finalizeDraft);
   billsRouter.post('/:id/kitchen', ops.sendToKitchen);
+  billsRouter.get('/:id/kitchen', ops.draftKitchenTickets);
   billsRouter.post('/:id/move', ops.moveGroup);
   billsRouter.post('/:id/merge', ops.mergeGroup);
   billsRouter.post('/:id/split', ops.splitGroup);

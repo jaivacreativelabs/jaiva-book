@@ -475,7 +475,8 @@ export async function finalizeDraft(
               tableId: draft.tableId ?? null,
               tableLabel,
               type: draft.type,
-              orderType: draft.type === 'TABLE' ? 'DINE_IN' : (input.orderType ?? 'TAKEAWAY'),
+              // New Bill (counter) is always Take Away, a table's bill Dine In.
+              orderType: draft.type === 'TABLE' ? 'DINE_IN' : 'TAKEAWAY',
               groupName: draft.groupName ?? '',
               guestCount: draft.guestCount ?? 0,
               customerName: draft.customerName ?? '',

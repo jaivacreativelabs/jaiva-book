@@ -220,13 +220,13 @@ describe('parcels', () => {
     [parcel, parcelRest] = mine;
   });
 
-  it('the next counter order gets the next token; a counter Dine In is not a parcel', async () => {
+  it('the next counter order gets the next token; New Bill is always a parcel, even if an older app says Dine In', async () => {
     let d = ok<Draft>(await w.adminA1.get('/api/v1/bills/counter'));
     d = await save(w.adminA1, d, [{ menuItemId: w.items.idly, quantity: 1 }]);
     const res = await w.adminA1.post(`/api/v1/bills/${d.id}/finalize`, { version: d.version, paymentMethod: 'UPI', orderType: 'DINE_IN', idempotencyKey: key() });
     expect(res.status).toBe(201);
     const t = (await board(w.adminA1)).find((x) => x.draftId === d.id)!;
-    expect([t.orderType, t.token, t.billNumber]).toEqual(['DINE_IN', 3, res.body.data.transaction.billNumber]);
+    expect([t.orderType, t.token, t.billNumber]).toEqual(['TAKEAWAY', 3, res.body.data.transaction.billNumber]);
   });
 
   it('when Ready, only the counter hands it over – then it leaves every board', async () => {

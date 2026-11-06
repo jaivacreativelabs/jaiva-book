@@ -109,7 +109,7 @@ export const branchUpdateSchema = branchCreateSchema.omit({ restaurantId: true }
 
 export const kitchenAdvanceSchema = z.strictObject({ from: z.enum(KITCHEN_STATUSES) });
 export const kitchenPrioritySchema = z.strictObject({ priority: z.boolean() });
-/** Send to Kitchen: New Bill says whether the order is dine-in or a parcel (table orders are dine-in). */
+/** Send to Kitchen. `orderType` is ignored (older apps sent New Bill's choice): New Bill orders are parcels, table orders dine-in. */
 export const kitchenSendSchema = z.strictObject({ orderType: z.enum(ORDER_TYPES).optional() });
 
 // ---------- Users (Restaurant Admins only) ----------
@@ -315,7 +315,7 @@ export const finalizeSchema = z.strictObject({
   paymentMethod: z.enum(PAYMENT_METHODS),
   /** paid in more than one way; paymentMethod is then the main one */
   payments: paymentPartsSchema.optional(),
-  /** New Bill only – table bills are always dine-in; left out means takeaway (older apps). */
+  /** Ignored (older apps sent New Bill's choice): New Bill is always takeaway, a table's bill dine-in. */
   orderType: z.enum(ORDER_TYPES).optional(),
   idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{8,100}$/, 'Invalid idempotency key'),
 });

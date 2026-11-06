@@ -269,6 +269,8 @@ export interface TableGroupSummaryDTO {
   kitchenPending: number;
   /** food still in the kitchen: READY if any of it is ready, else PREPARING, else NEW (sent); null when none */
   kitchenStatus: 'NEW' | 'PREPARING' | 'READY' | null;
+  /** portions of each dish already served (or handed over) */
+  kitchenServed: { menuItemId: string; quantity: number }[];
 }
 
 export interface TableDTO {

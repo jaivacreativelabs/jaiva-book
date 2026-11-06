@@ -102,14 +102,13 @@ async function byStation<T extends { menuItemId: Types.ObjectId }>(scope: Branch
 /**
  * Sends the not-yet-sent items of an order to the kitchen: one ticket, or one per kitchen counter.
  * Returns [] when there is nothing new (or the branch does not use the Kitchen Display). Safe to
- * call twice: the `kitchenRev` check lets only one caller record the same items. `orderType` is
- * New Bill's Dine In / Take Away before the bill exists; once billed, the bill's own one is used.
+ * call twice: the `kitchenRev` check lets only one caller record the same items. A table order is
+ * Dine In; a New Bill (counter) order is always Take Away – a parcel.
  */
 export async function sendToKitchen(
   actor: AuthUser,
   scope: BranchScope,
   draftId: string | Types.ObjectId,
-  orderType?: OrderType,
 ): Promise<KitchenTicketDTO[]> {
   if (!scope.branch.kitchenDisplay) return [];
   const draft = await DraftModel.findOne({ _id: toObjectId(String(draftId), 'bill'), branchId: scope.branch._id, status: { $ne: 'DELETED' } }).lean<DraftLean>();
@@ -135,7 +134,7 @@ export async function sendToKitchen(
   const date = todayIn(env.APP_TIMEZONE).replaceAll('-', '');
   const table = draft.tableId ? await TableModel.findById(draft.tableId).select('label').lean<{ label: string }>() : null;
   const bill = draft.transactionId
-    ? await TransactionModel.findById(draft.transactionId).select('billNumber orderType').lean<{ billNumber: string; orderType: OrderType | null }>()
+    ? await TransactionModel.findById(draft.transactionId).select('billNumber').lean<{ billNumber: string }>()
     : null;
   const token = draft.type === 'COUNTER' ? await tokenFor(scope, draft, date) : null;
   const tickets: KitchenTicketDTO[] = [];
@@ -150,7 +149,7 @@ export async function sendToKitchen(
         type: draft.type,
         tableLabel: table?.label ?? '',
         groupName: draft.type === 'TABLE' ? (draft.groupName ?? '') : '',
-        orderType: draft.type === 'TABLE' ? 'DINE_IN' : (bill?.orderType ?? orderType ?? 'TAKEAWAY'),
+        orderType: draft.type === 'TABLE' ? 'DINE_IN' : 'TAKEAWAY',
         token,
         billNumber: bill?.billNumber ?? '',
         items: group.items,
@@ -289,4 +288,13 @@ export async function getTicket(scope: BranchScope, id: string): Promise<Kitchen
 /** An order was deleted: tickets the kitchen has not started yet are cancelled. */
 export async function cancelUnstarted(draftId: Types.ObjectId): Promise<void> {
   await KitchenTicketModel.updateMany({ draftId, status: 'NEW' }, { $set: { status: 'CANCELLED', statusAt: new Date() } });
+}
+
+/** Every KOT of one order, oldest first: "KOT details" under the menu while it is being taken. */
+export async function listForDraft(actor: AuthUser, scope: BranchScope, draftId: string): Promise<KitchenTicketDTO[]> {
+  const draft = await DraftModel.findOne({ _id: toObjectId(draftId, 'bill'), branchId: scope.branch._id }).select('type').lean<Pick<DraftLean, 'type'>>();
+  if (!draft) throw notFound('Bill');
+  if (actor.role === 'WAITER' && draft.type !== 'TABLE') throw forbidden('Waiters can only take table orders');
+  const rows = await KitchenTicketModel.find({ draftId: toObjectId(draftId, 'bill'), branchId: scope.branch._id }).sort({ createdAt: 1, number: 1 }).lean<TicketLean[]>();
+  return rows.map(toKitchenTicketDTO);
 }

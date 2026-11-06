@@ -7,7 +7,6 @@ import {
   type DraftDTO,
   type DraftItemDTO,
   type KitchenQty,
-  type KitchenTicketDTO,
   type PaymentMethod,
   type PaymentPart,
   type TableDTO,
@@ -19,7 +18,7 @@ import {
 } from '@rb/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowRightLeft, ChevronUp, CirclePlus, ConciergeBell, FileText, Merge, Minus, Pencil, Plus, Split, Trash2, Users, Utensils } from 'lucide-react';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { TableIcon } from '../../components/badges';
 import { DiscountEditor } from '../../components/DiscountEditor';
@@ -38,6 +37,7 @@ import { splitVariant } from '../../utils/menu';
 import { DishNote } from '../../components/DishNote';
 import { addItemToBill, FoodGrid, setBillNote, setBillQuantity } from '../../components/FoodGrid';
 import { KitchenSendButton, useSendToKitchen } from '../../components/KitchenSend';
+import { KotButton, kotKey } from '../../components/KotDetails';
 import { KitchenBadges, StaffTabs } from '../../components/StaffTabs';
 import { useDraftSync } from '../../hooks/useDraftSync';
 import { useRootClass } from '../../hooks/useRootClass';
@@ -70,8 +70,11 @@ function pillText(t: TableDTO) {
 
 /** A table on the floor plan; `children` adds a line under the status (the waiter's kitchen badges). */
 export function TableCard({ table, selected, onClick, children }: { table: TableDTO; selected: boolean; onClick: () => void; children?: ReactNode }) {
+  // Occupied tables show what their groups' bills come to so far.
+  const amount = table.groups.reduce((a, g) => a + g.grandTotal, 0);
   return (
     <button className={cx('table-card', table.occupancy, selected && 'selected')} onClick={onClick} aria-pressed={selected}>
+      {table.groups.length > 0 && <span className="table-amount num">{formatMoney(amount)}</span>}
       <span className="table-label">{table.label}</span>
       <span className="table-seats">{table.seats} Seats</span>
       <TableIllustration shape={table.shape} seats={table.seats} tone={table.occupancy} />
@@ -237,21 +240,28 @@ function GroupLines({
   onQty,
   onNote,
   sent = [],
+  served = [],
   lockSent = false,
 }: {
   lines: DraftItemDTO[];
   onQty: (id: string, quantity: number) => void;
   onNote?: (id: string, note: string) => void;
   sent?: KitchenQty[];
+  /** What of it has been served: shown to waiters as "served" instead of "in kitchen". */
+  served?: KitchenQty[];
   /** Waiters: what the kitchen already has cannot be lowered or removed (the admin does that). */
   lockSent?: boolean;
 }) {
   if (lines.length === 0) return <span className="muted">No items yet</span>;
   const sentById = new Map(sent.map((s) => [s.menuItemId, s.quantity]));
+  const servedById = new Map(served.map((s) => [s.menuItemId, s.quantity]));
   return (
     <div className="group-lines">
       {lines.map((l) => {
+        // Everything the kitchen has (sent), split into served and still cooking.
         const inKitchen = Math.min(sentById.get(l.menuItemId) ?? 0, l.quantity);
+        const servedQty = Math.min(servedById.get(l.menuItemId) ?? 0, inKitchen);
+        const cooking = inKitchen - servedQty;
         return (
           <div key={l.menuItemId} className={cx('group-line', l.unavailable && 'unavailable')}>
             <div className="thumb thumb-xs">
@@ -262,7 +272,8 @@ function GroupLines({
               {splitVariant(l.name).variant && <small className="line-variant">{splitVariant(l.name).variant}</small>}
               <small>
                 {formatMoney(l.unitPrice * l.quantity)}
-                {lockSent && inKitchen > 0 && <span className="waiter-in-kitchen"> · {inKitchen} in kitchen</span>}
+                {lockSent && servedQty > 0 && <span className="waiter-served"> · {servedQty} served</span>}
+                {lockSent && cooking > 0 && <span className="waiter-in-kitchen"> · {cooking} in kitchen</span>}
               </small>
               {onNote && <DishNote dish={l.name} note={l.note} onChange={(n) => onNote(l.menuItemId, n)} disabled={inKitchen >= l.quantity} />}
             </span>
@@ -285,18 +296,32 @@ function GroupLines({
   );
 }
 
-/** What of a group's live bill the kitchen still needs, and sending it (unsaved edits are flushed first). */
-function useGroupKitchen(draftId: string, sync: DraftSync | null, lines: DraftItemDTO[], draft: DraftDTO | null, onSent: () => void) {
+/**
+ * What of a group's live bill the kitchen still needs, and sending it (unsaved edits are flushed first).
+ * `group` is the polled table summary: when it shows the bill or its kitchen state changed elsewhere
+ * (another phone added dishes, Done sent them), the bill is reloaded so the button is right at once.
+ */
+function useGroupKitchen(group: TableGroupSummaryDTO, sync: DraftSync | null, lines: DraftItemDTO[], draft: DraftDTO | null, onSent: () => void) {
   const { send, sending } = useSendToKitchen();
-  // What the kitchen already has; updated here after sending (the draft itself is not reloaded).
-  const [sentNow, setSentNow] = useState<KitchenQty[] | null>(null);
-  const sent = sentNow ?? draft?.kitchenSent ?? [];
+  // Right after sending: what the kitchen has now, until the reloaded bill brings the server's numbers.
+  const [sentNow, setSentNow] = useState<{ base: DraftDTO | null; sent: KitchenQty[] } | null>(null);
+  const sent = (sentNow && sentNow.base === draft ? sentNow.sent : draft?.kitchenSent) ?? [];
   const pending = kitchenPending(lines, sent);
+
+  useEffect(() => {
+    const d = sync?.getState().draft;
+    if (!sync || !d || sync.busy) return; // never over unsaved edits; they are being saved
+    const newer = group.version > d.version;
+    const kitchenMoved = group.version === d.version && group.kitchenPending !== kitchenPending(d.items, d.kitchenSent);
+    if (newer || kitchenMoved) void sync.load();
+  }, [group.version, group.kitchenPending, sync]);
+
   const sendToKitchen = async () => {
     const most = new Map(sent.map((s) => [s.menuItemId, s.quantity]));
     for (const l of lines) most.set(l.menuItemId, Math.max(most.get(l.menuItemId) ?? 0, l.quantity));
-    if (await send(draftId, sync)) {
-      setSentNow([...most].map(([menuItemId, quantity]) => ({ menuItemId, quantity })));
+    if (await send(group.draftId, sync)) {
+      setSentNow({ base: sync?.getState().draft ?? null, sent: [...most].map(([menuItemId, quantity]) => ({ menuItemId, quantity })) });
+      void sync?.load();
       onSent();
     }
   };
@@ -320,13 +345,18 @@ function OrderingMenu({
   const { sync, state } = useDraftSync(draftId, branchId);
   const qtyById = useMemo(() => new Map((state.local?.items ?? []).map((i) => [i.menuItemId, i.quantity])), [state.local]);
   const editable = Boolean(sync && state.local && state.draft?.status === 'ACTIVE');
+  const { activeBranch } = useAuth();
+  const prices = useMemo(() => new Map((state.local?.items ?? []).map((i) => [i.menuItemId, i.unitPrice])), [state.local]);
   return (
     <div className="page">
       <div className="ordering-head">
         <button className="link-btn" onClick={onDone}>
           <ArrowLeft size={16} /> Tables
         </button>
-        <h1 className="page-title">{title}</h1>
+        <div className="ordering-title-row">
+          <h1 className="page-title">{title}</h1>
+          {activeBranch?.kitchenDisplay && <KotButton draftId={draftId} branchId={branchId} title={title} prices={prices} />}
+        </div>
       </div>
       {state.status === 'closed' ? (
         <div className="alert alert-info">{state.message}</div>
@@ -385,7 +415,7 @@ function GroupCard({
   const lines = local?.items ?? [];
   const itemCount = local ? lines.reduce((a, l) => a + l.quantity, 0) : group.itemCount;
   const setQty = (id: string, quantity: number) => sync?.update((b) => setBillQuantity(b, id, quantity));
-  const kitchen = useGroupKitchen(group.draftId, sync, lines, state.draft, onSent);
+  const kitchen = useGroupKitchen(group, sync, lines, state.draft, onSent);
   const extra = group.lineCount - group.previewItems.slice(0, 2).length;
   return (
     <div className={cx('group-card', active && 'active')} aria-label={active ? `Adding food to ${group.groupName}` : undefined}>
@@ -415,6 +445,7 @@ function GroupCard({
           onQty={setQty}
           onNote={activeBranch!.kitchenDisplay ? (id, note) => sync?.update((b) => setBillNote(b, id, note)) : undefined}
           sent={kitchen.sent}
+          served={group.kitchenServed}
           lockSent={isWaiter}
         />
       ) : (
@@ -556,6 +587,7 @@ function TableDetail({
       },
     );
     void refresh();
+    void queryClient.invalidateQueries({ queryKey: kotKey(draftId) }); // the new KOT shows at once
   };
 
   const createGroup = async (guestCount: number, groupName: string, openBill: boolean) => {
@@ -850,7 +882,6 @@ export function TablesPage() {
   // Waiters watch the kitchen's Preparing / Ready on the cards, so refresh more often.
   const tables = useTables(branchId, isWaiter ? 5_000 : undefined);
   const queryClient = useQueryClient();
-  const toast = useToast();
   const [params, setParams] = useSearchParams();
   const selectedId = params.get('table');
   const panel = params.get('panel'); // 'add' | 'edit'
@@ -864,6 +895,7 @@ export function TablesPage() {
   useRootClass('has-bill-bar', ordering);
   const search = usePageSearch(ordering ? 'Search food items...' : 'Search tables...');
   const live = useDraftSync(ordering ? order : null, branchId);
+  const { send: sendToKitchen } = useSendToKitchen();
   const liveCount = live.state.local?.items.reduce((a, i) => a + i.quantity, 0) ?? 0;
   const liveTotal = useMemo(
     () => (live.state.local ? calculateBill(live.state.local.items, activeBranch!.restaurant.settings, live.state.local.discount).grandTotal : 0),
@@ -894,14 +926,13 @@ export function TablesPage() {
   const exitOrder = () => {
     // Kitchen Display branches: "Add Items" saves the order and sends what was added to the kitchen.
     if (activeBranch!.kitchenDisplay && order && live.sync) {
+      const sync = live.sync;
       const draftId = order;
-      live.sync
-        .flushNow()
-        .then(() => api.post<KitchenTicketDTO | null>(`/bills/${draftId}/kitchen`))
-        .then((ticket) => {
-          if (ticket) toast.success(`Sent to kitchen: ${ticket.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')}`);
-        })
-        .catch((err) => toast.error(err));
+      // Then the card's dishes and Send to Kitchen show what the kitchen has now.
+      void sendToKitchen(draftId, sync, null, { quietIfNothing: true }).then(() => {
+        void sync.load();
+        void refresh();
+      });
     }
     setPanelOnPhone(false);
     setPanel({ order: null });
@@ -942,22 +973,35 @@ export function TablesPage() {
             {!search && 'Use “Add Table” to build your floor plan.'}
           </Empty>
         ) : (
-          <div className="tables-grid">
-            {visible.map((t) => (
-              <TableCard key={t.id} table={t} selected={t.id === selectedId} onClick={() => setPanel({ table: t.id, panel: null })}>
-                {isWaiter && t.groups.some((g) => g.kitchenStatus || g.kitchenPending > 0) && (
-                  <span className="table-card-kitchen">
-                    {t.groups.map((g) => (
-                      <span key={g.draftId} className="waiter-table-group">
-                        {t.groups.length > 1 && <span className="waiter-group-name">{g.groupName}</span>}
-                        <KitchenBadges group={g} />
-                      </span>
-                    ))}
-                  </span>
-                )}
-              </TableCard>
-            ))}
-          </div>
+          // Tables with guests first, then the free ones (reserved tables have no guests yet, so they sit there too).
+          [
+            { title: 'Occupied Tables', list: visible.filter((t) => t.groups.length > 0) },
+            { title: 'Available Tables', list: visible.filter((t) => t.groups.length === 0) },
+          ]
+            .filter((s) => s.list.length > 0)
+            .map((s) => (
+              <section key={s.title} className="tables-section">
+                <h2 className="section-title">
+                  {s.title} <span className="muted">({s.list.length})</span>
+                </h2>
+                <div className="tables-grid">
+                  {s.list.map((t) => (
+                    <TableCard key={t.id} table={t} selected={t.id === selectedId} onClick={() => setPanel({ table: t.id, panel: null })}>
+                      {isWaiter && t.groups.some((g) => g.kitchenStatus || g.kitchenPending > 0) && (
+                        <span className="table-card-kitchen">
+                          {t.groups.map((g) => (
+                            <span key={g.draftId} className="waiter-table-group">
+                              {t.groups.length > 1 && <span className="waiter-group-name">{g.groupName}</span>}
+                              <KitchenBadges group={g} />
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                    </TableCard>
+                  ))}
+                </div>
+              </section>
+            ))
         )}
       </div>
       )}

@@ -13,7 +13,8 @@ import { Spinner } from './ui';
 export function useSendToKitchen() {
   const toast = useToast();
   const [sending, setSending] = useState(false);
-  const send = async (draftId: string, sync?: { flushNow: () => Promise<void> } | null, orderType?: OrderType | null) => {
+  /** `quietIfNothing`: no message when everything was already sent (leaving a table's order with Done). */
+  const send = async (draftId: string, sync?: { flushNow: () => Promise<void> } | null, orderType?: OrderType | null, { quietIfNothing = false } = {}) => {
     setSending(true);
     try {
       if (sync) await sync.flushNow();
@@ -24,7 +25,7 @@ export function useSendToKitchen() {
         const where = tickets.some((t) => t.stationName) ? tickets.map((t) => t.stationName).join(' + ') : 'kitchen';
         const items = tickets.flatMap((t) => t.items.map((i) => `${i.quantity}× ${i.name}`)).join(', ');
         toast.success(`${first.tableLabel ? `Sent to ${where}` : `${ticketPlace(first)} sent`}: ${items}`);
-      } else toast.info('Nothing new – everything is already in the kitchen');
+      } else if (!quietIfNothing) toast.info('Nothing new – everything is already in the kitchen');
       return true;
     } catch (err) {
       toast.error(err);
