@@ -4006,6 +4006,10 @@ html.app-open body {
   margin-top: 3px;
   font-size: 16px;
 }
+/* Kitchen: browsers play sound only after a first tap */
+.kds-sound-hint {
+  margin-bottom: 12px;
+}
 /* Kitchen: a dish with its own Ready button (sends just that dish) */
 .kds-dish {
   display: flex;
