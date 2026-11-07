@@ -193,6 +193,7 @@ export function createApiRouter(): Router {
   kitchenRouter.get('/tickets', ops.kitchenBoard);
   kitchenRouter.get('/tickets/:id', ops.kitchenTicket);
   kitchenRouter.post('/tickets/:id/advance', ops.advanceKitchenTicket);
+  kitchenRouter.post('/tickets/:id/dish-ready', ops.readyKitchenDish);
   kitchenRouter.post('/tickets/:id/priority', ops.kitchenTicketPriority);
   // Ready parcels and handing them over: the counter's job (admins only, checked in the service)
   kitchenRouter.get('/parcels', ops.readyParcels);

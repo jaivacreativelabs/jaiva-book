@@ -5,7 +5,7 @@
  */
 import { isParcel, KITCHEN_BOARD_STATUSES, ticketPlace, type KitchenTicketDTO } from '@rb/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChefHat, Package, Printer, Star, Timer } from 'lucide-react';
+import { Check, ChefHat, Package, Printer, Star, Timer } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { StaffTabs } from '../../components/StaffTabs';
@@ -86,6 +86,24 @@ function TicketCard({
     }
   };
   const advance = () => run(() => api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/advance`, { from: ticket.status }));
+  // One dish done before the rest: it goes out on its own (a new Ready ticket), the rest keeps cooking.
+  const dishReady = async (menuItemId: string) => {
+    setBusy(true);
+    try {
+      const { ticket: rest, ready } = await api.post<{ ticket: KitchenTicketDTO; ready: KitchenTicketDTO | null }>(`/kitchen/tickets/${ticket.id}/dish-ready`, {
+        from: ticket.status,
+        menuItemId,
+      });
+      replace(rest);
+      if (ready) queryClient.setQueryData<KitchenTicketDTO[]>(boardKey(branchId), (list) => [...(list ?? []), ready]);
+    } catch (err) {
+      toast.error(err);
+      if (err instanceof ApiError && err.code === 'CONFLICT') void queryClient.invalidateQueries({ queryKey: boardKey(branchId) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const perDish = status !== 'READY' && ticket.items.length > 1;
   const handOver = () => run(() => api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/handed-over`));
   const togglePriority = () => run(() => api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/priority`, { priority: !ticket.priority }));
   // A Ready parcel waits for the counter: admins can hand it over here, the kitchen only sees that it waits.
@@ -109,9 +127,23 @@ function TicketCard({
       </header>
       <ul className="kds-items">
         {ticket.items.map((i) => (
-          <li key={i.menuItemId}>
-            <strong>{i.quantity}×</strong> {i.name}
-            {i.note && <span className="kds-note">{i.note}</span>}
+          <li key={i.menuItemId} className={cx(perDish && 'kds-dish')}>
+            <div style={{ minWidth: 0 }}>
+              <strong>{i.quantity}×</strong> {i.name}
+              {i.note && <span className="kds-note">{i.note}</span>}
+            </div>
+            {perDish && (
+              <button
+                type="button"
+                className="kds-dish-ready"
+                onClick={() => dishReady(i.menuItemId)}
+                disabled={busy}
+                title={`${i.name} is ready – send it now`}
+                aria-label={`${i.quantity} ${i.name} ready`}
+              >
+                <Check size={15} /> Ready
+              </button>
+            )}
           </li>
         ))}
       </ul>

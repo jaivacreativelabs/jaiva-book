@@ -21,6 +21,7 @@ interface Ticket {
   token: number | null;
   billNumber: string;
   servedByName: string;
+  createdAt: string;
   items: { name: string; quantity: number }[];
 }
 
@@ -320,5 +321,45 @@ describe('dish notes', () => {
       ['Vada', 'extra chutney'],
       ['Idly', 'less spicy'],
     ]);
+  });
+});
+
+describe('one dish at a time', () => {
+  type Item = { menuItemId: string; name: string; quantity: number };
+  type Dish = { ticket: Ticket & { items: Item[] }; ready: (Ticket & { items: Item[] }) | null };
+  let t: Ticket & { items: Item[] };
+  const dishReady = (c: Client, from: string, menuItemId: string) => c.post(`/api/v1/kitchen/tickets/${t.id}/dish-ready`, { from, menuItemId });
+
+  it('sends a finished dish to the waiter on its own; the rest keeps cooking', async () => {
+    let g = ok<Draft>(await w.adminA1.post('/api/v1/bills/table-groups', { tableId: w.tables.t1, guestCount: 2, groupName: 'Dish' }), 201);
+    g = await save(w.adminA1, g, [
+      { menuItemId: w.items.idly, quantity: 2 },
+      { menuItemId: w.items.dosa, quantity: 1 },
+      { menuItemId: w.items.coffee, quantity: 1 },
+    ]);
+    t = ok<(Ticket & { items: Item[] })[]>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`))[0];
+
+    const first = ok<Dish>(await dishReady(cook, 'NEW', w.items.dosa));
+    expect([first.ticket.id, first.ticket.status, lines(first.ticket)]).toEqual([t.id, 'PREPARING', [['Idly', 2], ['Coffee', 1]]]);
+    expect(first.ready).toMatchObject({ number: `${t.number}-2`, status: 'READY', tableLabel: 'T1', groupName: 'Dish', draftId: g.id });
+    expect(lines(first.ready!)).toEqual([['Dosa', 1]]);
+    expect(first.ready!.createdAt).toBe(t.createdAt);
+    expect(ok<Ticket[]>(await w.adminA1.get('/api/v1/waiter/tickets')).some((x) => x.id === first.ready!.id)).toBe(true);
+
+    // The other screen still thinks it is New: refused, nothing sent twice.
+    const stale = await dishReady(cook, 'NEW', w.items.idly);
+    expect([stale.status, stale.body.error.details.current.status]).toEqual([409, 'PREPARING']);
+    expect((await dishReady(cook, 'PREPARING', w.items.dosa)).status).toBe(404);
+
+    const second = ok<Dish>(await dishReady(cook, 'PREPARING', w.items.coffee));
+    expect(second.ready!.number).toBe(`${t.number}-3`);
+    // The last dish moves the ticket itself.
+    const last = ok<Dish>(await dishReady(cook, 'PREPARING', w.items.idly));
+    expect([last.ticket.status, last.ready, lines(last.ticket)]).toEqual(['READY', null, [['Idly', 2]]]);
+    expect((await dishReady(cook, 'READY', w.items.idly)).status).toBe(400);
+  });
+
+  it('another branch cannot send its dishes', async () => {
+    expect((await w.adminA2.post(`/api/v1/kitchen/tickets/${t.id}/dish-ready`, { from: 'PREPARING', menuItemId: w.items.idly })).status).toBe(404);
   });
 });

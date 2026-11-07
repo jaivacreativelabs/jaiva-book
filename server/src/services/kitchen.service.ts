@@ -229,6 +229,80 @@ export async function advanceTicket(actor: AuthUser, scope: BranchScope, id: str
   return toKitchenTicketDTO(updated);
 }
 
+/**
+ * One dish of a ticket is done before the rest: it is split off as its own Ready ticket (number
+ * "<ticket>-2", "-3"…), so the waiter can take it now; the rest stays on the ticket, now Preparing.
+ * The last dish left moves the ticket itself to Ready. Parcels still go out together (see
+ * listReadyParcels). `from` must match, so two screens cannot both send the same dish.
+ */
+export async function readyDish(
+  actor: AuthUser,
+  scope: BranchScope,
+  id: string,
+  menuItemId: string,
+  from: 'NEW' | 'PREPARING',
+): Promise<{ ticket: KitchenTicketDTO; ready: KitchenTicketDTO | null }> {
+  assertKitchenOn(scope);
+  const t = await findTicket(scope, id);
+  assertOwnStation(actor, t);
+  const dishId = toObjectId(menuItemId, 'dish');
+  const dish = t.items.find((i) => i.menuItemId.equals(dishId));
+  const stale = () =>
+    conflict(`Ticket #${t.number} was already changed on another screen`, 'CONFLICT', { current: toKitchenTicketDTO(t) });
+  if (t.status !== from) throw stale();
+  if (!dish) throw notFound('Dish on this ticket');
+
+  if (t.items.length === 1) {
+    const updated = await KitchenTicketModel.findOneAndUpdate(
+      { _id: t._id, status: from, 'items.1': { $exists: false } },
+      { $set: { status: 'READY', statusAt: new Date() } },
+      { new: true },
+    ).lean<TicketLean>();
+    if (!updated) throw stale();
+    return { ticket: toKitchenTicketDTO(updated), ready: null };
+  }
+
+  const now = new Date();
+  const rest = await KitchenTicketModel.findOneAndUpdate(
+    { _id: t._id, status: from, 'items.1': { $exists: true }, 'items.menuItemId': dishId },
+    { $pull: { items: { menuItemId: dishId } }, $set: { status: 'PREPARING', ...(from === 'NEW' && { statusAt: now }) } },
+    { new: true },
+  ).lean<TicketLean>();
+  if (!rest) throw stale();
+  const part = (await nextSequence(`kot-part:${t._id}`)) + 1;
+  try {
+    const ready = new KitchenTicketModel({
+      restaurantId: t.restaurantId,
+      branchId: t.branchId,
+      number: `${t.number}-${part}`,
+      draftId: t.draftId,
+      type: t.type,
+      tableLabel: t.tableLabel,
+      groupName: t.groupName,
+      orderType: t.orderType,
+      token: t.token,
+      billNumber: t.billNumber,
+      items: [dish],
+      status: 'READY',
+      priority: t.priority,
+      statusAt: now,
+      createdBy: t.createdBy,
+      createdByName: t.createdByName,
+      stationId: t.stationId,
+      stationName: t.stationName,
+      // Ordered with the rest of the ticket: the waiting time runs from then.
+      createdAt: t.createdAt,
+      updatedAt: now,
+    });
+    await ready.save({ timestamps: false });
+    return { ticket: toKitchenTicketDTO(rest), ready: toKitchenTicketDTO(ready.toObject() as TicketLean) };
+  } catch (err) {
+    // Put the dish back rather than lose it.
+    await KitchenTicketModel.updateOne({ _id: t._id }, { $push: { items: dish } });
+    throw err;
+  }
+}
+
 /** Waiter board: food the kitchen marked Ready, longest waiting first (priority on top). Parcels go to the counter instead. */
 export async function listReady(scope: BranchScope): Promise<KitchenTicketDTO[]> {
   assertKitchenOn(scope);

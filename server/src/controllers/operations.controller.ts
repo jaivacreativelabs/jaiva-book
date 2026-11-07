@@ -8,6 +8,7 @@ import {
   finalizeSchema,
   manualSaleSchema,
   kitchenAdvanceSchema,
+  kitchenDishReadySchema,
   kitchenPrioritySchema,
   kitchenSendSchema,
   mergeGroupSchema,
@@ -107,6 +108,10 @@ export const kitchenTicket = async (req: Request, res: Response) => {
 };
 export const advanceKitchenTicket = async (req: Request, res: Response) => {
   res.json({ data: await kitchen.advanceTicket(currentUser(req), getBranchScope(req), id(req), parse(kitchenAdvanceSchema, req.body).from) });
+};
+export const readyKitchenDish = async (req: Request, res: Response) => {
+  const body = parse(kitchenDishReadySchema, req.body);
+  res.json({ data: await kitchen.readyDish(currentUser(req), getBranchScope(req), id(req), body.menuItemId, body.from) });
 };
 export const waiterBoard = async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store');

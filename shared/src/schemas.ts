@@ -109,6 +109,8 @@ export const branchUpdateSchema = branchCreateSchema.omit({ restaurantId: true }
 
 export const kitchenAdvanceSchema = z.strictObject({ from: z.enum(KITCHEN_STATUSES) });
 export const kitchenPrioritySchema = z.strictObject({ priority: z.boolean() });
+/** One dish of a New / Preparing ticket is done: it goes out on its own. `from` must match the ticket. */
+export const kitchenDishReadySchema = z.strictObject({ from: z.enum(['NEW', 'PREPARING']), menuItemId: objectIdSchema });
 /** Send to Kitchen. `orderType` is ignored (older apps sent New Bill's choice): New Bill orders are parcels, table orders dine-in. */
 export const kitchenSendSchema = z.strictObject({ orderType: z.enum(ORDER_TYPES).optional() });
 
