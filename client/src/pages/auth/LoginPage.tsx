@@ -49,12 +49,16 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <section className="login-brand">
+        <img className="login-logo" src="/lemon-tree-logo.png" alt="Lemon Tree" />
         <h2>{APP_NAME}</h2>
         <p>Billing, tables, menu and sales for every restaurant – in one place.</p>
       </section>
       <section className="login-form-wrap">
         <form className="login-form" onSubmit={submit}>
-          <div className="login-mobile-logo">{APP_NAME}</div>
+          <div className="login-mobile-logo">
+            <img src="/lemon-tree-logo.png" alt="Lemon Tree" />
+            {APP_NAME}
+          </div>
           <div>
             <h1>Sign in</h1>
             <p className="muted" style={{ marginTop: 6 }}>

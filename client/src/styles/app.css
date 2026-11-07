@@ -2857,6 +2857,13 @@ html.app-open body {
   padding: 40px;
   text-align: center;
 }
+/* The Lemon Tree logo above the app's name */
+.login-logo {
+  display: block;
+  width: min(280px, 60%);
+  height: auto;
+  filter: drop-shadow(0 16px 40px rgb(120 90 0 / 0.25));
+}
 .login-brand h2 {
   font-size: 1.6rem;
   color: #1a1d1a;
@@ -3487,6 +3494,12 @@ html.app-open body {
     font-size: 1.4rem;
     font-weight: 800;
     color: var(--color-primary);
+  }
+  .login-mobile-logo img {
+    display: block;
+    width: 110px;
+    height: auto;
+    margin: 0 auto 8px;
   }
   .login-form h1 {
     font-size: 1.6rem;
