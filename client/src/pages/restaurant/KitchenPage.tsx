@@ -5,11 +5,11 @@
  */
 import { isParcel, KITCHEN_BOARD_STATUSES, ticketPlace, type KitchenTicketDTO } from '@rb/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChefHat, Package, Printer, Star, Timer, Volume2, VolumeX } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Check, ChefHat, Package, Printer, Star, Timer } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { StaffTabs } from '../../components/StaffTabs';
-import { useOrderChime } from '../../hooks/useOrderChime';
+import { markOwnAction, playReadyDone } from '../../hooks/useOrderChime';
 import { Empty, Loading, PageHeader, Spinner } from '../../components/ui';
 import { ApiError, api, errorMessage } from '../../services/api';
 import { useAuth } from '../../store/auth';
@@ -86,7 +86,15 @@ function TicketCard({
       setBusy(false);
     }
   };
-  const advance = () => run(() => api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/advance`, { from: ticket.status }));
+  // Serving / handing over from this screen: no "served" sound here for its own tap.
+  const advance = () => {
+    if (status === 'READY') markOwnAction(ticket.id);
+    return run(async () => {
+      const next = await api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/advance`, { from: ticket.status });
+      if (next.status === 'READY') playReadyDone([next.id]); // "Mark ready": the kitchen's own "done" sound
+      return next;
+    });
+  };
   // One dish done before the rest: it goes out on its own (a new Ready ticket), the rest keeps cooking.
   const dishReady = async (menuItemId: string) => {
     setBusy(true);
@@ -96,6 +104,7 @@ function TicketCard({
         menuItemId,
       });
       replace(rest);
+      playReadyDone([ready?.id ?? rest.id]); // this dish (or the whole ticket) is Ready
       if (ready) queryClient.setQueryData<KitchenTicketDTO[]>(boardKey(branchId), (list) => [...(list ?? []), ready]);
     } catch (err) {
       toast.error(err);
@@ -105,7 +114,10 @@ function TicketCard({
     }
   };
   const perDish = status !== 'READY' && ticket.items.length > 1;
-  const handOver = () => run(() => api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/handed-over`));
+  const handOver = () => {
+    markOwnAction(ticket.id);
+    return run(() => api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/handed-over`));
+  };
   const togglePriority = () => run(() => api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/priority`, { priority: !ticket.priority }));
   // A Ready parcel waits for the counter: admins can hand it over here, the kitchen only sees that it waits.
   const parcelWaiting = status === 'READY' && isParcel(ticket);
@@ -189,10 +201,6 @@ export function KitchenPage() {
     refetchIntervalInBackground: true,
   });
 
-  // A chime for each new order. A counter's login only gets its own orders, so it only hears those.
-  const newIds = useMemo(() => board.data?.filter((t) => t.status === 'NEW').map((t) => t.id), [board.data]);
-  const sound = useOrderChime(newIds);
-
   if (!activeBranch!.kitchenDisplay) {
     return (
       <div className="page">
@@ -211,24 +219,7 @@ export function KitchenPage() {
       <PageHeader
         title={myStation ? `Kitchen Display · ${myStation.name}` : 'Kitchen Display'}
         subtitle={myStation ? `Orders for the ${myStation.name} counter · New → Preparing → Ready` : 'Live order tickets · New → Preparing → Ready'}
-        actions={
-          <button
-            type="button"
-            className={cx('btn btn-sm', sound.enabled ? 'btn-outline-primary' : 'btn-outline')}
-            onClick={sound.toggle}
-            aria-pressed={sound.enabled}
-            title={sound.enabled ? 'A sound plays when a new order arrives' : 'No sound for new orders'}
-          >
-            {sound.enabled ? <Volume2 size={16} /> : <VolumeX size={16} />} {sound.enabled ? 'Sound on' : 'Sound off'}
-          </button>
-        }
       />
-      {sound.enabled && sound.blocked && (
-        <div className="alert alert-warning kds-sound-hint" role="status">
-          <Volume2 size={16} />
-          <span>Tap anywhere on this screen once to hear a sound for new orders.</span>
-        </div>
-      )}
       {showStation && stations.length > 1 && (
         <div className="chips kds-stations" role="radiogroup" aria-label="Kitchen counter">
           {[{ id: '', name: 'All counters' }, ...stations].map((s) => (

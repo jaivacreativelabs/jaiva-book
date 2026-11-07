@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Package } from 'lucide-react';
 import { useState } from 'react';
 import { ApiError, api } from '../services/api';
+import { markOwnAction } from '../hooks/useOrderChime';
 import { useToast } from '../store/toast';
 import { Spinner } from './ui';
 
@@ -28,6 +29,7 @@ export function ReadyParcels({ branchId }: { branchId: string }) {
     setBusy(draftId);
     try {
       for (const t of tickets) {
+        markOwnAction(t.id); // no "handed over" sound on this screen for its own tap
         // Someone else handed it over already: it simply leaves the list.
         await api.post(`/kitchen/tickets/${t.id}/handed-over`).catch((err: unknown) => {
           if (!(err instanceof ApiError && err.code === 'CONFLICT')) throw err;

@@ -31,6 +31,7 @@ import { TableIcon } from '../components/badges';
 import { ShopClosedNotice, ShopToggle } from '../components/ShopToggle';
 import { Loading } from '../components/ui';
 import { useRootClass } from '../hooks/useRootClass';
+import { FoodAlerts } from '../components/FoodAlerts';
 import { ChangePasswordModal } from '../pages/auth/ChangePasswordModal';
 import { useAuth } from '../store/auth';
 import { APP_NAME, placeName } from '@rb/shared';
@@ -232,6 +233,7 @@ export function AppLayout() {
         )}
         {extra && <div className="topbar-extra">{extra}</div>}
         <SyncIndicator />
+        <FoodAlerts />
         <UserMenu />
       </header>
       <nav className={cx('sidebar', navOpen && 'open')} aria-label="Main">

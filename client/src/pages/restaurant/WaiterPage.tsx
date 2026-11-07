@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellRing, Check, ConciergeBell, Star, Timer } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Empty, Loading, PageHeader, Spinner } from '../../components/ui';
+import { markOwnAction } from '../../hooks/useOrderChime';
 import { ApiError, api, errorMessage } from '../../services/api';
 import { useAuth } from '../../store/auth';
 import { useToast } from '../../store/toast';
@@ -36,6 +37,7 @@ function ReadyCard({ ticket, branchId, now }: { ticket: KitchenTicketDTO; branch
   const serve = async () => {
     setBusy(true);
     try {
+      markOwnAction(ticket.id); // no "served" sound on this screen for its own tap
       await api.post<KitchenTicketDTO>(`/waiter/tickets/${ticket.id}/served`);
       drop();
     } catch (err) {

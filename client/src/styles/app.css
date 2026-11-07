@@ -294,6 +294,193 @@ html.app-open body {
   background: var(--color-danger-soft);
   color: var(--color-danger);
 }
+/* Food popups (Kitchen: new order, Waiter: food ready), top right under the top bar */
+.food-notices {
+  position: fixed;
+  top: calc(var(--topbar-height) + 12px);
+  right: 16px;
+  z-index: 210;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(380px, calc(100vw - 32px));
+}
+.food-notice {
+  position: relative;
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-left: 5px solid var(--color-info);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: 0 12px 32px rgb(20 30 20 / 0.18);
+  animation: food-notice-in 0.25s ease-out;
+}
+.food-notice.ready {
+  border-left-color: var(--color-primary);
+}
+@keyframes food-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .food-notice {
+    animation: none;
+  }
+}
+.food-notice-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 12px;
+  padding: 12px 36px 12px 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.food-notice-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-info-soft);
+  color: var(--color-info);
+}
+.food-notice.ready .food-notice-icon {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.food-notice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.food-notice-title {
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+.food-notice-place {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-weight: 700;
+}
+.food-notice-place.parcel {
+  color: var(--color-accent-purple);
+}
+.food-notice-station {
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-info-soft);
+  color: var(--color-info);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.food-notice-items {
+  display: flex;
+  flex-direction: column;
+  margin-top: 2px;
+  font-size: 0.875rem;
+}
+.food-notice-items em {
+  color: var(--color-warning);
+  font-style: normal;
+  font-weight: 700;
+}
+.food-notice-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.food-notice-close:hover {
+  background: var(--color-border);
+}
+/* Top bar: on / off switch for food alerts (Kitchen, Waiter, Restaurant Admin) */
+.sound-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 4px 6px 4px 10px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.sound-switch.on {
+  color: var(--color-primary);
+}
+.sound-track {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--color-border-strong);
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.sound-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s;
+}
+.sound-switch.on .sound-track {
+  background: var(--color-primary);
+}
+.sound-switch.on .sound-track::after {
+  transform: translateX(18px);
+}
+.sound-switch:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+/* Sound is wanted but the browser waits for a first tap: a pulsing amber switch */
+.sound-switch.waiting {
+  color: var(--color-warning);
+}
+.sound-switch.waiting .sound-track {
+  background: var(--color-warning);
+  animation: sound-pulse 1.6s ease-in-out infinite;
+}
+@keyframes sound-pulse {
+  50% {
+    box-shadow: 0 0 0 5px rgb(176 125 0 / 0.2);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sound-switch.waiting .sound-track {
+    animation: none;
+  }
+}
 .user-menu {
   position: relative;
   margin-left: auto;
@@ -3048,7 +3235,8 @@ html.app-open body {
     height: 16px;
   }
   .topbar-extra,
-  .sync-pill span.sync-text {
+  .sync-pill span.sync-text,
+  .sound-switch .sound-text {
     display: none;
   }
   .user-button {
@@ -4005,10 +4193,6 @@ html.app-open body {
   height: 36px;
   margin-top: 3px;
   font-size: 16px;
-}
-/* Kitchen: browsers play sound only after a first tap */
-.kds-sound-hint {
-  margin-bottom: 12px;
 }
 /* Kitchen: a dish with its own Ready button (sends just that dish) */
 .kds-dish {
