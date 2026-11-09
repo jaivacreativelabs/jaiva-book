@@ -166,6 +166,11 @@ export interface CategoryDTO {
   editable: boolean;
   /** a main-menu category seen from a branch */
   isShared: boolean;
+  /**
+   * The GST % (basis points) given to every dish in it; new dishes in it start with it. A dish
+   * can still have its own. null: not set.
+   */
+  taxRateBps: number | null;
 }
 
 export interface MenuItemDTO {

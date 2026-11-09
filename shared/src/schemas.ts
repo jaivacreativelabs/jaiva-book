@@ -176,6 +176,8 @@ export const dailyReportSendSchema = z.strictObject({
 export const categoryCreateSchema = z.strictObject({
   name: name(50),
   icon: z.string().trim().max(8).optional(),
+  /** GST % in basis points for every dish in it (they all get it when it changes); null: not set */
+  taxRateBps: z.number().int().min(0).max(10_000).nullable().optional(),
 });
 export const categoryUpdateSchema = categoryCreateSchema.partial();
 export const reorderSchema = z.strictObject({ ids: z.array(objectIdSchema).min(1).max(200) });

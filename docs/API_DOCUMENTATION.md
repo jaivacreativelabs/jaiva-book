@@ -114,7 +114,7 @@ transactions count as revenue.
 |---|---|---|
 | GET | `/menu/categories` | effective categories for the scope (`includeInactive=true` for management) |
 | POST | `/menu/categories` | `{ name, icon? }` – created in the caller's scope (branch, or shared for SA without branch) |
-| PATCH | `/menu/categories/:id` | `{ name?, icon? }` – only categories owned by the scope |
+| PATCH | `/menu/categories/:id` | `{ name?, icon?, taxRateBps? }` – only categories owned by the scope. A new `taxRateBps` (GST in basis points) is given to every dish in the category (a branch: its own dishes and its view of shared ones), and new dishes created without `taxRateBps` start with it; a dish can still be given its own afterwards. `null` clears it and leaves the dishes as they are |
 | PATCH | `/menu/categories/:id/status` | `{ status }` |
 | POST | `/menu/categories/reorder` | `{ ids: [] }` |
 | GET | `/menu/items` | `?categoryId=&q=&includeArchived=` – effective prices / availability |

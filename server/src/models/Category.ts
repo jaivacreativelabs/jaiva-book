@@ -11,6 +11,8 @@ const categoryOverrideSchema = new Schema(
     displayOrder: { type: Number, default: null },
     // A shared category this branch deleted from its own menu (other branches keep it).
     deleted: { type: Boolean, default: null },
+    // This branch's own GST % for a main-menu category (null → the category's).
+    taxRateBps: { type: Number, default: null },
   },
   { _id: false },
 );
@@ -26,6 +28,9 @@ const categorySchema = new Schema(
     displayOrder: { type: Number, default: 0 },
     status: { type: String, enum: RECORD_STATUSES, default: 'ACTIVE' },
     branchOverrides: { type: [categoryOverrideSchema], default: [] },
+    // GST % (basis points) given to every dish in it when set or changed; new dishes start with
+    // it. A dish can still have its own. null: not set.
+    taxRateBps: { type: Number, default: null, min: 0, max: 10_000 },
   },
   { timestamps: true },
 );

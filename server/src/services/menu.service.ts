@@ -67,11 +67,11 @@ async function getVisibleCategory(scope: Scope, id: string) {
 function setCategoryOverride(
   cat: InstanceType<typeof CategoryModel>,
   branchId: Types.ObjectId,
-  patch: { name?: string; icon?: string; status?: RecordStatus; displayOrder?: number; deleted?: boolean },
+  patch: { name?: string; icon?: string; status?: RecordStatus; displayOrder?: number; deleted?: boolean; taxRateBps?: number | null },
 ) {
   const existing = cat.branchOverrides.find((o) => o.branchId.equals(branchId));
   if (existing) existing.set(patch);
-  else cat.branchOverrides.push({ branchId, name: null, icon: null, status: null, displayOrder: null, deleted: null, ...patch });
+  else cat.branchOverrides.push({ branchId, name: null, icon: null, status: null, displayOrder: null, deleted: null, taxRateBps: null, ...patch });
 }
 
 /**
@@ -123,6 +123,7 @@ export async function createCategory(actor: AuthUser, scope: Scope, input: Categ
     nameKey: key,
     icon: input.icon ?? '',
     displayOrder: (last?.displayOrder ?? -1) + 1,
+    taxRateBps: input.taxRateBps ?? null,
   });
   await audit(actor, {
     ...auditBase(scope),
@@ -137,6 +138,11 @@ export async function createCategory(actor: AuthUser, scope: Scope, input: Categ
 export async function updateCategory(actor: AuthUser, scope: Scope, id: string, input: Partial<CategoryCreateInput>) {
   const cat = await getVisibleCategory(scope, id);
   const branchId = branchOf(scope);
+  const gstBefore = effectiveCategory(cat.toObject() as CategoryLean, branchId).taxRateBps;
+  if (input.taxRateBps !== undefined) {
+    if (owns(scope, cat)) cat.taxRateBps = input.taxRateBps;
+    else setCategoryOverride(cat, branchId!, { taxRateBps: input.taxRateBps }); // this branch only
+  }
   if (owns(scope, cat)) {
     if (input.name && nameKey(input.name) !== cat.nameKey) {
       const key = nameKey(input.name);
@@ -163,6 +169,14 @@ export async function updateCategory(actor: AuthUser, scope: Scope, id: string, 
     entityId: cat._id,
     summary: `Updated category "${cat.name}"`,
   });
+  // A new GST % for the category: every dish in it gets it, as if each one were edited (a dish
+  // can be given its own afterwards). Clearing it leaves the dishes as they are.
+  if (input.taxRateBps != null && input.taxRateBps !== gstBefore) {
+    const dishes = (await listItems(scope, {})).filter((i) => !i.parentId && i.editable && i.categoryId === String(cat._id));
+    for (const d of dishes) {
+      if (d.taxRateBps !== input.taxRateBps) await updateItem(actor, scope, d.id, { taxRateBps: input.taxRateBps });
+    }
+  }
   return toCategoryDTO(cat.toObject() as CategoryLean, branchOf(scope));
 }
 
@@ -313,8 +327,13 @@ async function assertBranchNameFree(scope: Scope, name: string, dishId: Types.Ob
 }
 
 export async function createItem(actor: AuthUser, scope: Scope, input: MenuItemCreateInput) {
-  await assertCategoryUsable(scope, input.categoryId);
+  const cat = await assertCategoryUsable(scope, input.categoryId);
   await assertItemNameFree(scope, input.name);
+  // No GST given: the category's, if it has one.
+  if (input.taxRateBps === undefined) {
+    const gst = effectiveCategory(cat.toObject() as CategoryLean, branchOf(scope)).taxRateBps;
+    if (gst != null) input = { ...input, taxRateBps: gst };
+  }
   const item = await MenuItemModel.create({
     restaurantId: scope.restaurant._id,
     branchId: branchOf(scope),

@@ -90,6 +90,7 @@ export function effectiveCategory(c: WithId<Category>, branchId: Types.ObjectId 
     status: (o?.status ?? c.status) as RecordStatus,
     displayOrder: o?.displayOrder ?? ownOffset + (c.displayOrder ?? 0),
     deleted: Boolean(o?.deleted),
+    taxRateBps: o?.taxRateBps ?? c.taxRateBps ?? null,
   };
 }
 
@@ -106,6 +107,7 @@ export function toCategoryDTO(c: WithId<Category>, scopeBranchId: Types.ObjectId
     status: eff.status,
     editable: sameId(c.branchId, scopeBranchId) || isShared,
     isShared,
+    taxRateBps: eff.taxRateBps,
   };
 }
 

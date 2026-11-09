@@ -4839,6 +4839,12 @@ html.app-open body {
   gap: 4px;
   margin-left: auto;
 }
+/* "GST" on a category row: one GST for every food in it */
+.cat-gst-btn {
+  min-height: 32px;
+  padding: 0 10px;
+  font-weight: 700;
+}
 .bill-item-tax {
   display: block;
   color: var(--color-text-muted);

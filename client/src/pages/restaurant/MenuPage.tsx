@@ -29,7 +29,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FoodImage } from '../../components/FoodImage';
 import { byOrder, mergeOrder, SortableItem, SortableList } from '../../components/Sortable';
-import { CancelButton, ConfirmButton, ConfirmDialog, Empty, Field, Loading, PageHeader, SidePanel, Spinner } from '../../components/ui';
+import { CancelButton, ConfirmButton, ConfirmDialog, Empty, Field, Loading, Modal, PageHeader, SidePanel, Spinner } from '../../components/ui';
 import { api, errorMessage } from '../../services/api';
 import { menuKeys, scopeQuery, useCategories, useMenuItems, type MenuScope } from '../../services/queries';
 import { useAuth } from '../../store/auth';
@@ -352,10 +352,21 @@ function ItemPanel({
   const [price, setPrice] = useState(item ? paiseToRupeesInput(item.price) : '');
   const [description, setDescription] = useState(item?.description ?? '');
   // GST % of this food. Older items without their own rate show the restaurant's rate they pay today.
+  // A new food starts with its category's GST (else the restaurant's), until a GST is picked here.
   const restaurantTaxBps = taxSettings.taxes.reduce((a, t) => a + t.rateBps, 0);
-  const [tax, setTax] = useState(() =>
-    bpsToPercent(item ? (item.taxRateBps ?? (item.taxable ? restaurantTaxBps : 0)) : restaurantTaxBps),
+  const startingTax = (catId: string) => bpsToPercent(categories.find((c) => c.id === catId)?.taxRateBps ?? restaurantTaxBps);
+  const [tax, setTaxValue] = useState(() =>
+    item ? bpsToPercent(item.taxRateBps ?? (item.taxable ? restaurantTaxBps : 0)) : startingTax(''),
   );
+  const [taxPicked, setTaxPicked] = useState(isEdit);
+  const setTax = (v: string) => {
+    setTaxValue(v);
+    setTaxPicked(true);
+  };
+  const chooseCategory = (id: string) => {
+    setCategoryId(id);
+    if (!taxPicked) setTaxValue(startingTax(id));
+  };
   const [extraTaxes, setExtraTaxes] = useState<TaxRow[]>(() =>
     (item?.extraTaxes ?? []).map((t) => ({ key: `tax-${++rowSeq}`, name: t.name, rate: bpsToPercent(t.rateBps) })),
   );
@@ -556,7 +567,7 @@ function ItemPanel({
                 role="radio"
                 aria-checked={categoryId === c.id}
                 className={cx('cat-tile', categoryId === c.id && 'active')}
-                onClick={() => setCategoryId(c.id)}
+                onClick={() => chooseCategory(c.id)}
               >
                 {categoryId === c.id && <Check className="cat-tile-check" />}
                 <span className="cat-tile-icon">{c.icon || '🍽️'}</span>
@@ -609,7 +620,9 @@ function ItemPanel({
           label="GST %"
           error={errors.tax}
           hint={
-            shared
+            !isEdit && !taxPicked && categories.find((c) => c.id === categoryId)?.taxRateBps != null
+              ? 'This category’s GST – tap another to change it for this food'
+              : shared
               ? undefined
               : Number(parsePercentToBps(tax || '0')) > 0
                 ? `CGST + SGST, ${taxSettings.pricesIncludeTax ? 'included in' : 'added to'} the price on the bill`
@@ -684,13 +697,69 @@ function ItemPanel({
 
 // ---------------- Category management ----------------
 
+/**
+ * One GST % for a whole category: every dish in it gets it on Save, and new dishes added to it
+ * start with it. A single dish can still be given its own GST afterwards (Edit food).
+ */
+function CategoryGstDialog({ category, dishCount, onSave, onClose }: { category: CategoryDTO; dishCount: number; onSave: (bps: number) => Promise<void>; onClose: () => void }) {
+  const [value, setValue] = useState(category.taxRateBps == null ? '' : bpsToPercent(category.taxRateBps));
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const bps = value.trim() ? parsePercentToBps(value) : null;
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (bps === null || bps > 10_000) return setError('Enter a GST % like 5 or 2.5');
+    setBusy(true);
+    try {
+      await onSave(bps);
+      onClose();
+    } catch (err) {
+      setError(errorMessage(err));
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal title={`GST for ${category.name}`} onClose={onClose} width={420}>
+      <form className="stack" onSubmit={save}>
+        <div className="tax-picker">
+          {GST_RATES.map((r) => (
+            <button type="button" key={r} className={cx('chip chip-sm', bps === r * 100 && 'active')} onClick={() => (setValue(String(r)), setError(''))}>
+              {r === 0 ? 'No GST' : `${r}%`}
+            </button>
+          ))}
+          <div className="input-suffix">
+            <input className="input" inputMode="decimal" value={value} onChange={(e) => (setValue(e.target.value), setError(''))} placeholder="0" aria-label="GST percent" />
+            <span>%</span>
+          </div>
+        </div>
+        {error ? (
+          <div className="alert alert-danger">{error}</div>
+        ) : (
+          <div className="muted">
+            {dishCount === 0
+              ? 'New foods added to this category will start with this GST.'
+              : `All ${dishCount} food${dishCount === 1 ? '' : 's'} in ${category.name} will get this GST, and new foods added to it will start with it. You can still set a different GST for one food in Edit food.`}
+          </div>
+        )}
+        <div className="modal-actions">
+          <CancelButton onClick={onClose} disabled={busy} />
+          <ConfirmButton type="submit" busy={busy} label="Save" />
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function CategoriesPanel({ scope, onClose }: { scope: MenuScope; onClose: () => void }) {
   const scoped = useScopedApi(scope);
   const queryClient = useQueryClient();
   const toast = useToast();
   const categories = useCategories(scope, true);
+  const items = useMenuItems(scope);
   const [editing, setEditing] = useState<{ id: string; name: string; icon: string } | null>(null);
   const [deleting, setDeleting] = useState<CategoryDTO | null>(null);
+  const [gstFor, setGstFor] = useState<CategoryDTO | null>(null);
+  const dishesIn = (c: CategoryDTO) => (items.data ?? []).filter((i) => !i.parentId && i.editable && i.categoryId === c.id).length;
   const list = categories.data ?? [];
   const own = list.filter((c) => c.editable);
   const refresh = () => queryClient.invalidateQueries({ queryKey: menuKeys.all });
@@ -746,8 +815,9 @@ function CategoriesPanel({ scope, onClose }: { scope: MenuScope; onClose: () => 
                     <span className="cat-icon">{c.icon || '•'}</span>
                     <span className="cat-row-name">
                       <strong>{c.name}</strong>
-                      {(c.isShared || c.status === 'INACTIVE') && (
+                      {(c.isShared || c.status === 'INACTIVE' || c.taxRateBps != null) && (
                         <span className="cat-row-badges">
+                          {c.taxRateBps != null && <span className="badge badge-green badge-sm">{c.taxRateBps === 0 ? 'No GST' : `GST ${bpsToPercent(c.taxRateBps)}%`}</span>}
                           {c.isShared && <span className="badge badge-gray badge-sm">Shared</span>}
                           {c.status === 'INACTIVE' && <span className="badge badge-amber badge-sm">Hidden</span>}
                         </span>
@@ -755,6 +825,9 @@ function CategoriesPanel({ scope, onClose }: { scope: MenuScope; onClose: () => 
                     </span>
                     {c.editable && (
                       <span className="cat-row-actions">
+                        <button className="btn btn-outline btn-sm cat-gst-btn" onClick={() => setGstFor(c)} title={`Set one GST for every food in ${c.name}`}>
+                          GST
+                        </button>
                         <button className="icon-btn plain" onClick={() => setEditing({ id: c.id, name: c.name, icon: c.icon })} aria-label={`Rename ${c.name}`}>
                           <Pencil />
                         </button>
@@ -794,6 +867,18 @@ function CategoriesPanel({ scope, onClose }: { scope: MenuScope; onClose: () => 
             const c = deleting;
             setDeleting(null);
             void run(() => scoped.del(`/menu/categories/${c.id}`), `“${c.name}” deleted`);
+          }}
+        />
+      )}
+      {gstFor && (
+        <CategoryGstDialog
+          category={gstFor}
+          dishCount={dishesIn(gstFor)}
+          onClose={() => setGstFor(null)}
+          onSave={async (bps) => {
+            await scoped.patch(`/menu/categories/${gstFor.id}`, { taxRateBps: bps });
+            await refresh();
+            toast.success(`${bps === 0 ? 'No GST' : `GST ${bpsToPercent(bps)}%`} set for ${gstFor.name}`);
           }}
         />
       )}
