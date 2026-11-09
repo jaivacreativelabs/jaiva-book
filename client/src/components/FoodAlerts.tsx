@@ -131,7 +131,13 @@ export function FoodAlerts() {
     [role, kitchen.data, ready.data, close],
   );
 
-  const sound = useOrderChime(on ? ids : undefined, `${user?.id}:${branchId}`, on ? readyIds : undefined, onArrive);
+  const sound = useOrderChime(
+    on ? ids : undefined,
+    `${user?.id}:${branchId}`,
+    on ? readyIds : undefined,
+    onArrive,
+    role === 'KITCHEN' ? 'order' : 'arrived',
+  );
   if (!on) return null;
 
   const what = role === 'KITCHEN' ? 'a new order arrives' : role === 'WAITER' ? 'food is ready' : 'food or a parcel is ready';

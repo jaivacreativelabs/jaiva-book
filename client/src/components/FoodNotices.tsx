@@ -40,7 +40,7 @@ export function FoodNotices({ notices, onClose }: { notices: Notice[]; onClose: 
                 <span className="food-notice-title">{kind === 'order' ? 'New order' : 'Food ready – take it to the table'}</span>
                 <span className={cx('food-notice-place', isParcel(ticket) && 'parcel')}>
                   {isParcel(ticket) && <Package size={14} aria-hidden />}
-                  {ticketPlace(ticket)}
+                  {ticketPlace(ticket, kind !== 'order') /* the kitchen sees no Order no. */}
                   {ticket.stationName && <span className="food-notice-station">{ticket.stationName}</span>}
                 </span>
                 <span className="food-notice-items">

@@ -43,7 +43,7 @@ import { effectiveCategory, effectiveItem, restaurantSettings, toDraftDTO, toTra
 import { resolvePayments } from '../utils/payments.js';
 import { toObjectId } from '../utils/validate.js';
 import { audit } from './audit.service.js';
-import { cancelUnstarted, linkBill, sendToKitchen } from './kitchen.service.js';
+import { cancelUnstarted, editUnstarted, linkBill, sendToKitchen, unstartedQty, unstartedTickets } from './kitchen.service.js';
 import { seatsInUse } from './tables.service.js';
 
 type DraftLean = Draft & { _id: Types.ObjectId; updatedAt?: Date };
@@ -291,23 +291,15 @@ const sameDiscount = (a: { type?: string | null; value?: number | null } | null 
   (a?.type ?? null) === (b?.type ?? null) && (!a?.type || (a.value ?? 0) === (b?.value ?? 0));
 
 /**
- * A waiter changes only the dishes of a table order: no discount, name or guest changes, and
- * nothing the kitchen already has may be lowered (there is no cancel ticket – the admin does that).
- * Unchanged fields may still be sent, as the bill screens always send them.
+ * A waiter changes only the dishes of a table order: no discount, name or guest changes.
+ * (Lowering what the kitchen already has is checked in updateDraft: allowed only while the kitchen
+ * has not started it.) Unchanged fields may still be sent, as the bill screens always send them.
  */
 function assertWaiterEdit(draft: DraftLean, input: DraftUpdateInput) {
   if (input.discount !== undefined && !sameDiscount(input.discount, draft.discount)) throw forbidden('Only a Restaurant Admin can give a discount');
   if (input.customerName !== undefined && input.customerName !== (draft.customerName ?? '')) throw forbidden('Only a Restaurant Admin can change the customer name');
   if (input.guestCount !== undefined && input.guestCount !== draft.guestCount) throw forbidden('Only a Restaurant Admin can change the guests');
   if (input.groupTag !== undefined && input.groupTag !== (draft.groupTag ?? '')) throw forbidden('Only a Restaurant Admin can change the group');
-  const wanted = new Map(input.items.map((i) => [i.menuItemId, i.quantity]));
-  const sent = new Map((draft.kitchenSent ?? []).map((s) => [String(s.menuItemId), s.quantity]));
-  for (const line of draft.items) {
-    const now = wanted.get(String(line.menuItemId)) ?? 0;
-    if (now < line.quantity && now < (sent.get(String(line.menuItemId)) ?? 0)) {
-      throw new AppError(403, 'IN_KITCHEN', `${line.name} is already in the kitchen – ask the Restaurant Admin to remove it`);
-    }
-  }
 }
 
 export async function updateDraft(actor: AuthUser, scope: BranchScope, id: string, input: DraftUpdateInput): Promise<DraftDTO> {
@@ -351,11 +343,44 @@ export async function updateDraft(actor: AuthUser, scope: BranchScope, id: strin
   if (input.groupTag !== undefined && draft.type === 'TABLE') set.groupTag = input.groupTag;
   if (input.guestCount !== undefined && draft.type === 'TABLE') set.guestCount = input.guestCount;
 
-  const updated = await DraftModel.findOneAndUpdate(
-    { _id: draft._id, version: input.version, status: 'ACTIVE' },
-    { $set: set, $inc: { version: 1 } },
-    { new: true },
-  ).lean<DraftLean>();
+  // Food already sent to the kitchen that is now lowered or removed, and sent dishes whose note changed.
+  const sent = new Map((draft.kitchenSent ?? []).map((s) => [String(s.menuItemId), s.quantity]));
+  const wanted = new Map(lines.map((l) => [String(l.menuItemId), l.quantity]));
+  const takeBack = new Map([...sent].flatMap(([id, q]) => ((wanted.get(id) ?? 0) < q ? [[id, q - (wanted.get(id) ?? 0)] as const] : [])));
+  const newNotes = new Map(
+    lines.filter((l) => sent.has(String(l.menuItemId)) && l.note !== (previousNote.get(String(l.menuItemId)) ?? '')).map((l) => [String(l.menuItemId), l.note]),
+  );
+
+  const updated = await runInTransaction(async (session) => {
+    // While the kitchen has not started it (New), it comes off / changes on the KOT too. What the
+    // kitchen has started stays: a waiter may not lower that; the admin may (the bill is theirs).
+    const tickets = takeBack.size || newNotes.size ? await unstartedTickets(draft._id, session) : [];
+    const free = unstartedQty(tickets);
+    const taken = new Map([...takeBack].map(([id, q]) => [id, Math.min(q, free.get(id) ?? 0)]));
+    if (actor.role === 'WAITER') {
+      for (const line of draft.items) {
+        const id = String(line.menuItemId);
+        const lowered = Math.min(line.quantity, sent.get(id) ?? 0) - (wanted.get(id) ?? 0);
+        if (lowered > (taken.get(id) ?? 0)) {
+          throw new AppError(403, 'IN_KITCHEN', `The kitchen has started ${line.name} – ask the Restaurant Admin to remove it`);
+        }
+      }
+    }
+    const filter: Record<string, unknown> = { _id: draft._id, version: input.version, status: 'ACTIVE' };
+    const inc: Record<string, number> = { version: 1 };
+    if ([...taken.values()].some((q) => q > 0)) {
+      // The kitchen no longer has it: adding it back later sends it again. kitchenRev keeps a
+      // send running at the same moment from recording the old numbers.
+      set.kitchenSent = (draft.kitchenSent ?? [])
+        .map((s) => ({ menuItemId: s.menuItemId, quantity: s.quantity - (taken.get(String(s.menuItemId)) ?? 0) }))
+        .filter((s) => s.quantity > 0);
+      filter.kitchenRev = draft.kitchenRev ?? null; // null also matches older bills without one
+      inc.kitchenRev = 1;
+    }
+    const saved = await DraftModel.findOneAndUpdate(filter, { $set: set, $inc: inc }, { new: true, session }).lean<DraftLean>();
+    if (saved && tickets.length) await editUnstarted(tickets, taken, newNotes, session);
+    return saved;
+  });
   if (!updated) {
     const current = await findDraft(scope, id);
     assertActive(current);

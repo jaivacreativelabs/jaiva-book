@@ -91,10 +91,30 @@ describe('sending orders', () => {
     ]);
   });
 
-  it('never re-sends food after a quantity goes down and up again', async () => {
+  it('lowering food the kitchen has not started takes it off the KOT (latest first); adding it back sends it again', async () => {
+    const [t1, t2] = await board(w.adminA1);
     group = await save(w.adminA1, group, [{ menuItemId: w.items.idly, quantity: 1 }]);
+    // Idly 3 → 1: the latest KOT loses its Idly, the first one goes 2 → 1. The Coffee is gone too,
+    // so the second KOT has nothing left and is cancelled.
+    const first = ok<Ticket & { editedAt: string | null }>(await w.adminA1.get(`/api/v1/kitchen/tickets/${t1.id}`));
+    expect([lines(first), first.status, Boolean(first.editedAt)]).toEqual([[['Idly', 1]], 'NEW', true]);
+    expect(ok<Ticket>(await w.adminA1.get(`/api/v1/kitchen/tickets/${t2.id}`)).status).toBe('CANCELLED');
+    expect(ok<{ kitchenSent: unknown[] }>(await w.adminA1.get(`/api/v1/bills/${group.id}`)).kitchenSent).toEqual([{ menuItemId: w.items.idly, quantity: 1 }]);
     group = await save(w.adminA1, group, [{ menuItemId: w.items.idly, quantity: 3 }]);
-    expect(ok(await w.adminA1.post(`/api/v1/bills/${group.id}/kitchen`))).toEqual([]);
+    expect(ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${group.id}/kitchen`)).map(lines)).toEqual([[['Idly', 2]]]);
+  });
+
+  it('never re-sends food the kitchen has started after a quantity goes down and up again', async () => {
+    let g = ok<Draft>(await w.adminA1.post('/api/v1/bills/table-groups', { tableId: w.tables.t2, guestCount: 1 }), 201);
+    g = await save(w.adminA1, g, [{ menuItemId: w.items.vada, quantity: 2 }]);
+    const t = ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`))[0];
+    ok(await w.adminA1.post(`/api/v1/kitchen/tickets/${t.id}/advance`, { from: 'NEW' }));
+    g = await save(w.adminA1, g, [{ menuItemId: w.items.vada, quantity: 1 }]); // the admin may; the kitchen keeps cooking 2
+    expect(lines(ok<Ticket>(await w.adminA1.get(`/api/v1/kitchen/tickets/${t.id}`)))).toEqual([['Vada', 2]]);
+    g = await save(w.adminA1, g, [{ menuItemId: w.items.vada, quantity: 2 }]);
+    expect(ok(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`))).toEqual([]);
+    expect((await w.adminA1.delete(`/api/v1/bills/${g.id}?version=${g.version}`)).status).toBe(204);
+    for (const from of ['PREPARING', 'READY']) ok(await w.adminA1.post(`/api/v1/kitchen/tickets/${t.id}/advance`, { from })); // off the board
   });
 
   it('generating the bill sends whatever is left', async () => {
@@ -104,7 +124,7 @@ describe('sending orders', () => {
     ]);
     expect((await finalize(w.adminA1, group)).status).toBe(201);
     const tickets = await board(w.adminA1);
-    expect(tickets.map(lines)).toEqual([[['Idly', 2]], [['Idly', 1], ['Coffee', 1]], [['Dosa', 1]]]);
+    expect(tickets.map(lines)).toEqual([[['Idly', 1]], [['Idly', 2]], [['Dosa', 1]]]);
   });
 
   it('a counter bill goes to the kitchen in full', async () => {

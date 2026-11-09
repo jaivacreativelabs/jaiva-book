@@ -241,6 +241,7 @@ function GroupLines({
   onNote,
   sent = [],
   served = [],
+  started = [],
   lockSent = false,
 }: {
   lines: DraftItemDTO[];
@@ -249,19 +250,27 @@ function GroupLines({
   sent?: KitchenQty[];
   /** What of it has been served: shown to waiters as "served" instead of "in kitchen". */
   served?: KitchenQty[];
-  /** Waiters: what the kitchen already has cannot be lowered or removed (the admin does that). */
+  /** What of it the kitchen has started: from then on it cannot be changed here. */
+  started?: KitchenQty[];
+  /**
+   * Waiters: what the kitchen has started cannot be lowered or removed (the admin does that).
+   * Sent food the kitchen has not started yet can still be lowered, removed or given a new note.
+   */
   lockSent?: boolean;
 }) {
   if (lines.length === 0) return <span className="muted">No items yet</span>;
   const sentById = new Map(sent.map((s) => [s.menuItemId, s.quantity]));
   const servedById = new Map(served.map((s) => [s.menuItemId, s.quantity]));
+  const startedById = new Map(started.map((s) => [s.menuItemId, s.quantity]));
   return (
     <div className="group-lines">
       {lines.map((l) => {
-        // Everything the kitchen has (sent), split into served and still cooking.
+        // Everything the kitchen has (sent): served, being made, and not started yet (still changeable).
         const inKitchen = Math.min(sentById.get(l.menuItemId) ?? 0, l.quantity);
-        const servedQty = Math.min(servedById.get(l.menuItemId) ?? 0, inKitchen);
-        const cooking = inKitchen - servedQty;
+        const begun = Math.min(startedById.get(l.menuItemId) ?? 0, inKitchen);
+        const servedQty = Math.min(servedById.get(l.menuItemId) ?? 0, begun);
+        const cooking = begun - servedQty;
+        const waiting = inKitchen - begun;
         return (
           <div key={l.menuItemId} className={cx('group-line', l.unavailable && 'unavailable')}>
             <div className="thumb thumb-xs">
@@ -274,11 +283,12 @@ function GroupLines({
                 {formatMoney(l.unitPrice * l.quantity)}
                 {lockSent && servedQty > 0 && <span className="waiter-served"> · {servedQty} served</span>}
                 {lockSent && cooking > 0 && <span className="waiter-in-kitchen"> · {cooking} in kitchen</span>}
+                {lockSent && waiting > 0 && <span className="waiter-sent"> · {waiting} sent</span>}
               </small>
-              {onNote && <DishNote dish={l.name} note={l.note} onChange={(n) => onNote(l.menuItemId, n)} disabled={inKitchen >= l.quantity} />}
+              {onNote && <DishNote dish={l.name} note={l.note} onChange={(n) => onNote(l.menuItemId, n)} disabled={begun >= l.quantity} />}
             </span>
             <div className="qty">
-              <button onClick={() => onQty(l.menuItemId, l.quantity - 1)} disabled={lockSent && l.quantity <= inKitchen} aria-label={`Decrease ${l.name}`}>
+              <button onClick={() => onQty(l.menuItemId, l.quantity - 1)} disabled={lockSent && l.quantity <= begun} aria-label={`Decrease ${l.name}`}>
                 <Minus size={15} />
               </button>
               <output>{l.quantity}</output>
@@ -286,7 +296,7 @@ function GroupLines({
                 <Plus size={15} />
               </button>
             </div>
-            <button className="icon-btn plain danger-text" onClick={() => onQty(l.menuItemId, 0)} disabled={lockSent && inKitchen > 0} aria-label={`Remove ${l.name}`}>
+            <button className="icon-btn plain danger-text" onClick={() => onQty(l.menuItemId, 0)} disabled={lockSent && begun > 0} aria-label={`Remove ${l.name}`}>
               <Trash2 />
             </button>
           </div>
@@ -446,6 +456,7 @@ function GroupCard({
           onNote={activeBranch!.kitchenDisplay ? (id, note) => sync?.update((b) => setBillNote(b, id, note)) : undefined}
           sent={kitchen.sent}
           served={group.kitchenServed}
+          started={group.kitchenStarted}
           lockSent={isWaiter}
         />
       ) : (

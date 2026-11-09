@@ -9,7 +9,7 @@
  * A branch with kitchen counters (Tiffin, Juice…) gets one ticket per counter for each send; a
  * Kitchen login with a counter sees and moves only that counter's tickets.
  */
-import type { Types } from 'mongoose';
+import type { ClientSession, Types } from 'mongoose';
 import { KITCHEN_BOARD_STATUSES, KITCHEN_NEXT, type KitchenStatus, type KitchenTicketDTO, type OrderType } from '@rb/shared';
 import { env } from '../config/env.js';
 import type { AuthUser } from '../middleware/auth.js';
@@ -70,6 +70,7 @@ export function toKitchenTicketDTO(t: TicketLean): KitchenTicketDTO {
     servedByName: t.servedByName ?? '',
     stationId: t.stationId ? String(t.stationId) : null,
     stationName: t.stationName ?? '',
+    editedAt: t.editedAt ? new Date(t.editedAt).toISOString() : null,
   };
 }
 
@@ -359,6 +360,55 @@ export async function setTicketPriority(actor: AuthUser, scope: BranchScope, id:
 /** For the printed kitchen slip. Works even after the branch switches the board off. */
 export async function getTicket(scope: BranchScope, id: string): Promise<KitchenTicketDTO> {
   return toKitchenTicketDTO(await findTicket(scope, id));
+}
+
+/** An order's tickets the kitchen has not started yet (New), latest first. */
+export async function unstartedTickets(draftId: Types.ObjectId, session?: ClientSession): Promise<TicketLean[]> {
+  return KitchenTicketModel.find({ draftId, status: 'NEW' })
+    .sort({ createdAt: -1, number: -1 })
+    .session(session ?? null)
+    .lean<TicketLean[]>();
+}
+
+/** Portions of each dish on those tickets. */
+export function unstartedQty(tickets: TicketLean[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const t of tickets) for (const i of t.items) out.set(String(i.menuItemId), (out.get(String(i.menuItemId)) ?? 0) + i.quantity);
+  return out;
+}
+
+/**
+ * The order was changed before the kitchen started on it: `cut` portions of each dish come off its
+ * New tickets (latest ticket first) and `notes` replace the dish notes on them. A ticket left with
+ * no dishes is cancelled; any other changed ticket shows the kitchen it was edited. If the kitchen
+ * starts one of them meanwhile, nothing is changed (409 IN_KITCHEN – run it in a transaction).
+ */
+export async function editUnstarted(
+  tickets: TicketLean[],
+  cut: Map<string, number>,
+  notes: Map<string, string>,
+  session?: ClientSession,
+): Promise<void> {
+  const left = new Map(cut);
+  const now = new Date();
+  for (const t of tickets) {
+    let changed = false;
+    const items = t.items.flatMap((i) => {
+      const id = String(i.menuItemId);
+      const take = Math.min(left.get(id) ?? 0, i.quantity);
+      if (take > 0) left.set(id, (left.get(id) ?? 0) - take);
+      const note = notes.get(id) ?? i.note ?? '';
+      if (take === 0 && note === (i.note ?? '')) return [i];
+      changed = true;
+      return i.quantity - take > 0 ? [{ ...i, quantity: i.quantity - take, note }] : [];
+    });
+    if (!changed) continue;
+    const set = items.length ? { items, editedAt: now } : { status: 'CANCELLED', statusAt: now, editedAt: now };
+    const res = await KitchenTicketModel.updateOne({ _id: t._id, status: 'NEW' }, { $set: set }, { session });
+    if (res.modifiedCount !== 1) {
+      throw new AppError(409, 'IN_KITCHEN', `The kitchen just started KOT #${t.kot || t.number} – it can no longer be changed`);
+    }
+  }
 }
 
 /** An order was deleted: tickets the kitchen has not started yet are cancelled. */

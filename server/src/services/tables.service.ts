@@ -24,10 +24,20 @@ const sentQty = (rows: { menuItemId: Types.ObjectId; quantity: number }[]) => ro
 
 /** Each group's food still in the kitchen, by the status that matters most to a waiter: Ready, then Preparing, then sent. */
 const KITCHEN_RANK: Record<BoardStatus, number> = { NEW: 1, PREPARING: 2, READY: 3 };
-type Kitchen = { status: Map<string, BoardStatus>; served: Map<string, Map<string, number>> };
-/** Per group: its kitchen status, and the portions of each dish already served (or handed over). */
+type Kitchen = { status: Map<string, BoardStatus>; served: Map<string, Map<string, number>>; started: Map<string, Map<string, number>> };
+const addTo = (byDraft: Map<string, Map<string, number>>, key: string, items: { menuItemId: Types.ObjectId; quantity: number }[]) => {
+  if (!items.length) return;
+  const dishes = byDraft.get(key) ?? new Map<string, number>();
+  for (const i of items) dishes.set(String(i.menuItemId), (dishes.get(String(i.menuItemId)) ?? 0) + i.quantity);
+  byDraft.set(key, dishes);
+};
+const asQty = (dishes?: Map<string, number>) => [...(dishes ?? [])].map(([menuItemId, quantity]) => ({ menuItemId, quantity }));
+/**
+ * Per group: its kitchen status, the portions of each dish already served (or handed over), and
+ * the portions the kitchen has started (a waiter can still change the rest).
+ */
 async function kitchenByDraft(drafts: DraftLean[]): Promise<Kitchen> {
-  const out: Kitchen = { status: new Map(), served: new Map() };
+  const out: Kitchen = { status: new Map(), served: new Map(), started: new Map() };
   if (!drafts.length) return out;
   const tickets = await KitchenTicketModel.find({ draftId: { $in: drafts.map((d) => d._id) }, status: { $in: [...KITCHEN_BOARD_STATUSES, 'SERVED'] } })
     .select('draftId status items.menuItemId items.quantity items.served')
@@ -35,12 +45,8 @@ async function kitchenByDraft(drafts: DraftLean[]): Promise<Kitchen> {
   for (const t of tickets) {
     const key = String(t.draftId);
     // Served: the whole ticket, or the dishes a waiter took early while the rest was still cooking.
-    const served = t.status === 'SERVED' ? t.items : t.items.filter((i) => i.served);
-    if (served.length) {
-      const dishes = out.served.get(key) ?? new Map<string, number>();
-      for (const i of served) dishes.set(String(i.menuItemId), (dishes.get(String(i.menuItemId)) ?? 0) + i.quantity);
-      out.served.set(key, dishes);
-    }
+    addTo(out.served, key, t.status === 'SERVED' ? t.items : t.items.filter((i) => i.served));
+    if (t.status !== 'NEW') addTo(out.started, key, t.items);
     if (t.status === 'SERVED') continue;
     const status = t.status as BoardStatus;
     const prev = out.status.get(key);
@@ -70,7 +76,8 @@ export function toTableDTO(t: TableLean, drafts: DraftLean[], kitchen?: Kitchen)
       version: d.version,
       kitchenPending: kitchenPending(sentQty(d.items), sentQty(d.kitchenSent ?? [])),
       kitchenStatus: kitchen?.status.get(String(d._id)) ?? null,
-      kitchenServed: [...(kitchen?.served.get(String(d._id)) ?? [])].map(([menuItemId, quantity]) => ({ menuItemId, quantity })),
+      kitchenServed: asQty(kitchen?.served.get(String(d._id))),
+      kitchenStarted: asQty(kitchen?.started.get(String(d._id))),
     }));
   const seatsUsed = drafts.reduce((a, d) => a + d.guestCount, 0);
   return {

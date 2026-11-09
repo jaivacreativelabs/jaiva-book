@@ -26,12 +26,12 @@ const COLUMN: Record<BoardStatus, { title: string; action: string; tone: string 
 
 const boardKey = (branchId: string) => ['kitchen', branchId] as const;
 
-/** Where the food goes, and for a billed counter order its bill number. */
+/** Where the food goes ("Table T13 · Group 1", no Order no.), and for a billed counter order its bill number. */
 function TicketPlace({ ticket, className }: { ticket: KitchenTicketDTO; className: string }) {
   return (
     <div className={cx(className, isParcel(ticket) && 'parcel')}>
       {isParcel(ticket) && <Package size={14} aria-hidden />}
-      {ticketPlace(ticket)}
+      {ticketPlace(ticket, false)}
       {ticket.billNumber && !ticket.tableLabel && <span className="kds-bill-no">Bill {ticket.billNumber}</span>}
     </div>
   );
@@ -134,6 +134,11 @@ function TicketCard({
           <div className="kds-ticket-no">
             #{ticket.number}
             {ticket.priority && <Star size={15} className="kds-star-on" aria-label="Priority" />}
+            {ticket.editedAt && (
+              <span className="kds-edited" title={`Changed by the waiter at ${formatDateTime(ticket.editedAt)}`}>
+                Edited
+              </span>
+            )}
           </div>
           <TicketPlace ticket={ticket} className="kds-ticket-where" />
           {ticket.createdByName && <div className="kds-ticket-by">by {ticket.createdByName}</div>}
@@ -158,7 +163,7 @@ function TicketCard({
                   <strong>{i.quantity}×</strong> {i.name}
                   {i.note && <span className="kds-note">{i.note}</span>}
                 </span>
-                {i.ready && <span className={cx('kds-dish-state', i.served && 'served')}>{i.served ? 'Served' : 'With waiter'}</span>}
+                {i.ready && <span className={cx('kds-dish-state', i.served && 'served')}>{i.served ? 'Served' : 'Ready'}</span>}
               </label>
             ) : (
               <div style={{ minWidth: 0 }}>

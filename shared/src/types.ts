@@ -271,6 +271,8 @@ export interface TableGroupSummaryDTO {
   kitchenStatus: 'NEW' | 'PREPARING' | 'READY' | null;
   /** portions of each dish already served (or handed over) */
   kitchenServed: { menuItemId: string; quantity: number }[];
+  /** portions of each dish the kitchen has started (Preparing, Ready or Served): these can no longer be changed by a waiter */
+  kitchenStarted: { menuItemId: string; quantity: number }[];
 }
 
 export interface TableDTO {
@@ -326,6 +328,8 @@ export interface KitchenTicketDTO {
   /** The kitchen counter it went to; null when the branch has one kitchen (or it was sent before counters) */
   stationId: string | null;
   stationName: string;
+  /** When the order last changed this ticket before the kitchen started it (dish lowered, removed or its note changed); null if never */
+  editedAt: string | null;
 }
 
 export interface TransactionItemDTO {

@@ -84,11 +84,13 @@ describe('waiter board', () => {
 
 describe('waiter takes table orders', () => {
   let g: Draft;
-  const save = async (items: { menuItemId: string; quantity: number }[]) => {
+  const save = async (items: { menuItemId: string; quantity: number; note?: string }[]) => {
     g = ok<Draft>(await waiter.put(`/api/v1/bills/${g.id}`, { version: g.version, items }));
   };
   const groupOnTables = async () => {
-    const { tables } = ok<{ tables: { groups: { draftId: string; kitchenStatus: string | null; kitchenPending: number; kitchenServed: unknown[] }[] }[] }>(await waiter.get('/api/v1/tables'));
+    const { tables } = ok<{
+      tables: { groups: { draftId: string; kitchenStatus: string | null; kitchenPending: number; kitchenServed: unknown[]; kitchenStarted: unknown[] }[] }[];
+    }>(await waiter.get('/api/v1/tables'));
     return tables.flatMap((t) => t.groups).find((x) => x.draftId === g.id)!;
   };
 
@@ -129,9 +131,32 @@ describe('waiter takes table orders', () => {
     ]);
   });
 
-  it('cannot lower what the kitchen already has, give discounts or rename', async () => {
+  it('can change a KOT until the kitchen starts it, then not', async () => {
+    const [dosaKot] = ok<Ticket[]>(await waiter.get(`/api/v1/bills/${g.id}/kitchen`));
+    // Still New: 2 → 1 Dosa with a note, and the KOT changes with it.
+    await save([
+      { menuItemId: w.items.dosa, quantity: 1, note: 'less oil' },
+      { menuItemId: w.items.coffee, quantity: 1 },
+    ]);
+    const edited = ok<Omit<Ticket, 'items'> & { editedAt: string | null; items: { name: string; quantity: number; note: string }[] }>(await w.adminA1.get(`/api/v1/kitchen/tickets/${dosaKot.id}`));
+    expect([edited.items.map((i) => [i.name, i.quantity, i.note]), Boolean(edited.editedAt)]).toEqual([[['Dosa', 1, 'less oil']], true]);
+    expect((await groupOnTables()).kitchenPending).toBe(0);
+    // Back to 2: the extra Dosa is a new KOT.
+    await save([
+      { menuItemId: w.items.dosa, quantity: 2 },
+      { menuItemId: w.items.coffee, quantity: 1 },
+    ]);
+    const again = ok<Ticket[]>(await waiter.post(`/api/v1/bills/${g.id}/kitchen`));
+    expect(again.map((t) => t.items.map((i) => [i.name, i.quantity]))).toEqual([[['Dosa', 1]]]);
+
+    // The kitchen starts both Dosa KOTs: now they are locked for the waiter.
+    for (const t of [dosaKot, ...again]) ok(await w.adminA1.post(`/api/v1/kitchen/tickets/${t.id}/advance`, { from: 'NEW' }));
+    expect((await groupOnTables()).kitchenStarted).toEqual(expect.arrayContaining([{ menuItemId: w.items.dosa, quantity: 2 }]));
     const lower = await waiter.put(`/api/v1/bills/${g.id}`, { version: g.version, items: [{ menuItemId: w.items.dosa, quantity: 1 }, { menuItemId: w.items.coffee, quantity: 1 }] });
     expect([lower.status, lower.body.error.code]).toEqual([403, 'IN_KITCHEN']);
+  });
+
+  it('cannot give discounts or rename', async () => {
     const items = [
       { menuItemId: w.items.dosa, quantity: 2 },
       { menuItemId: w.items.coffee, quantity: 1 },

@@ -46,6 +46,8 @@ const kitchenTicketSchema = new Schema(
     // The kitchen counter it went to (null: the branch has one kitchen, or older tickets)
     stationId: { type: Schema.Types.ObjectId, default: null },
     stationName: { type: String, default: '' },
+    // Last changed by the order (a dish lowered / removed or its note changed) before the kitchen started it
+    editedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

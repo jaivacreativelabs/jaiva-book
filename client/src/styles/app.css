@@ -1701,6 +1701,27 @@ html.app-open body {
   justify-content: space-between;
   color: var(--color-text-muted);
 }
+/* The folded Subtotal / tax row on a bill: tap to open the breakdown. */
+.bill-breakdown-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--font-size-md);
+  cursor: pointer;
+}
+.bill-breakdown-toggle svg {
+  transition: transform 0.15s ease;
+}
+.bill-breakdown-toggle.open svg {
+  transform: rotate(180deg);
+}
 .bill-total {
   display: flex;
   align-items: baseline;
@@ -3876,6 +3897,17 @@ html.app-open body {
   letter-spacing: 0;
 }
 /* Which kitchen counter (Tiffin, Juice…) a ticket belongs to */
+/* A New ticket the waiter changed (a dish lowered, removed or its note changed) */
+.kds-edited {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
 .kds-station {
   display: inline-block;
   margin-top: 4px;
@@ -4243,6 +4275,11 @@ html.app-open body {
 
 .waiter-in-kitchen {
   color: var(--color-warning);
+  font-weight: 600;
+}
+/* Sent, but the kitchen has not started it: the waiter can still change it */
+.waiter-sent {
+  color: var(--color-info);
   font-weight: 600;
 }
 

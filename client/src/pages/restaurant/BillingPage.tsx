@@ -10,6 +10,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
+  ChevronDown,
   ChevronUp,
   CircleCheck,
   CloudOff,
@@ -103,6 +104,7 @@ export function BillingView({
   const [splitParts, setSplitParts] = useState<PaymentPart[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [manualSale, setManualSale] = useState(false);
   // Phones: the bill is a full-screen sheet opened from the bottom "View Bill" bar.
   const [billOpen, setBillOpen] = useState(false);
@@ -353,8 +355,21 @@ export function BillingView({
               )}
             </div>
           )}
+          {/* Subtotal, discount and taxes stay folded under one row; tap it to see them. */}
           {showBreakdown && totals && (
-            <div className="bill-rows num">
+            <button
+              type="button"
+              className={`bill-breakdown-toggle${breakdownOpen ? ' open' : ''}`}
+              onClick={() => setBreakdownOpen((o) => !o)}
+              aria-expanded={breakdownOpen}
+              aria-controls="bill-breakdown"
+            >
+              <span>{totals.taxes.length > 0 ? 'Subtotal & tax' : 'Subtotal & discount'}</span>
+              <ChevronDown size={18} />
+            </button>
+          )}
+          {showBreakdown && totals && breakdownOpen && (
+            <div className="bill-rows num" id="bill-breakdown">
               <div>
                 <span>Subtotal</span>
                 <span>{formatMoney(totals.subtotal)}</span>

@@ -1,7 +1,7 @@
 /**
  * Food alerts: a chime when something new shows up (a new order for the kitchen, Ready food for
- * waiters and the counter), and a shorter, softer sound when Ready food leaves (served at a table
- * or a parcel handed over). The sounds are short WAV clips made in the browser and played like any
+ * waiters and the counter; the kitchen's is a phone-bell "tring tring"), and a shorter, softer sound
+ * when Ready food leaves (served at a table or a parcel handed over). The sounds are short WAV clips made in the browser and played like any
  * audio file (no file to download).
  *
  * Kept once per browser tab, not per screen: the dashboard frame is rebuilt when moving between
@@ -65,13 +65,15 @@ const subscribe = (l: () => void) => {
 const snapshot = () => state;
 
 // ---- The sounds: short WAV clips made here once, played like any audio file ----
-type Sound = 'arrived' | 'gone' | 'ready';
-const ALL_SOUNDS: Sound[] = ['arrived', 'gone', 'ready'];
+/** `order`: the kitchen's "new order" sound – an old phone bell, "tring tring". */
+export type Sound = 'arrived' | 'order' | 'gone' | 'ready';
+const ALL_SOUNDS: Sound[] = ['arrived', 'order', 'gone', 'ready'];
+const RATE = 22050;
 /**
  * Notes (Hz) and when each starts (s). Arrived: two rising tones, twice. Gone: one falling pair.
  * Ready: three quick rising notes – the kitchen's own "done" when it marks food Ready.
  */
-const SOUNDS: Record<Sound, { notes: number[]; at: (i: number) => number; volume: number }> = {
+const SOUNDS: Record<Exclude<Sound, 'order'>, { notes: number[]; at: (i: number) => number; volume: number }> = {
   arrived: {
     notes: [880, 1320, 880, 1320],
     at: (i) => i * 0.18 + (i >= 2 ? 0.25 : 0),
@@ -81,20 +83,63 @@ const SOUNDS: Record<Sound, { notes: number[]; at: (i: number) => number; volume
   ready: { notes: [1047, 1319, 1568], at: (i) => i * 0.11, volume: 0.7 },
 };
 
-/** 16-bit mono WAV of the notes, each a sine with a quick rise and a 0.35 s fade. */
-function wavUrl(sound: Sound): string {
+/** The notes, each a sine with a quick rise and a 0.35 s fade. */
+function noteSamples(sound: Exclude<Sound, 'order'>): Float32Array {
   const { notes, at, volume } = SOUNDS[sound];
-  const rate = 22050;
-  const length = Math.ceil((at(notes.length - 1) + 0.45) * rate);
+  const length = Math.ceil((at(notes.length - 1) + 0.45) * RATE);
   const samples = new Float32Array(length);
   notes.forEach((freq, n) => {
-    const from = Math.floor(at(n) * rate);
-    for (let i = 0; i < 0.4 * rate && from + i < length; i++) {
-      const t = i / rate;
+    const from = Math.floor(at(n) * RATE);
+    for (let i = 0; i < 0.4 * RATE && from + i < length; i++) {
+      const t = i / RATE;
       const envelope = t < 0.015 ? t / 0.015 : Math.exp(-(t - 0.015) * 12);
       samples[from + i] += Math.sin(2 * Math.PI * freq * t) * envelope * volume;
     }
   });
+  return samples;
+}
+
+/**
+ * "Tring tring": two rings of an old phone bell. In each ring a hammer strikes two small bells in
+ * turn, 40 times a second; every strike is a bright bell tone (with its overtones) that dies away fast.
+ */
+function ringSamples(): Float32Array {
+  const RING = 0.5; // s, one "tring"
+  const GAP = 0.22; // s, between the two
+  const STRIKES_PER_S = 40;
+  const BELLS = [1380, 1720]; // Hz, the two bells
+  const PARTIALS = [
+    [1, 1],
+    [2.4, 0.45],
+    [3.9, 0.2],
+  ];
+  const length = Math.ceil((2 * RING + GAP + 0.3) * RATE);
+  const samples = new Float32Array(length);
+  for (const start of [0, RING + GAP]) {
+    const strikes = Math.round(RING * STRIKES_PER_S);
+    for (let s = 0; s < strikes; s++) {
+      const from = Math.floor((start + s / STRIKES_PER_S) * RATE);
+      const bell = BELLS[s % 2];
+      for (let i = 0; i < 0.25 * RATE && from + i < length; i++) {
+        const t = i / RATE;
+        const envelope = (t < 0.002 ? t / 0.002 : 1) * Math.exp(-t * 18);
+        let x = 0;
+        for (const [ratio, gain] of PARTIALS) x += Math.sin(2 * Math.PI * bell * ratio * t) * gain;
+        samples[from + i] += x * envelope;
+      }
+    }
+  }
+  // Loud but never clipped.
+  let peak = 0;
+  for (const x of samples) peak = Math.max(peak, Math.abs(x));
+  return samples.map((x) => (x / peak) * 0.85);
+}
+
+/** A 16-bit mono WAV of the sound, as a URL an <audio> can play. */
+function wavUrl(sound: Sound): string {
+  const samples = sound === 'order' ? ringSamples() : noteSamples(sound);
+  const rate = RATE;
+  const length = samples.length;
   const buffer = new ArrayBuffer(44 + length * 2);
   const v = new DataView(buffer);
   const text = (o: number, str: string) => [...str].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
@@ -195,13 +240,21 @@ function playChime(sound: Sound = 'arrived') {
  * a login + branch (`key`) is first seen in this tab never ring: they were already waiting.
  * `ready` (optional) is the Ready food on screen: one that leaves it – served or handed over by
  * someone else – plays the softer sound. `onArrive` gets the ids that just arrived (for a popup),
- * whether or not the sound is on.
+ * whether or not the sound is on. `arriveSound` is what rings for a new id (the kitchen uses `order`).
  */
-export function useOrderChime(ids: string[] | undefined, key: string, ready?: string[], onArrive?: (ids: string[]) => void) {
+export function useOrderChime(
+  ids: string[] | undefined,
+  key: string,
+  ready?: string[],
+  onArrive?: (ids: string[]) => void,
+  arriveSound: Sound = 'arrived',
+) {
   const { enabled } = useSyncExternalStore(subscribe, snapshot);
   const arrive = useRef(onArrive);
+  const arriveWith = useRef(arriveSound);
   useEffect(() => {
     arrive.current = onArrive;
+    arriveWith.current = arriveSound;
   });
 
   // A screen rebuilt after the page was already touched can play sound straight away.
@@ -219,7 +272,7 @@ export function useOrderChime(ids: string[] | undefined, key: string, ready?: st
     const fresh = ids.filter((id) => !seen.has(id) && !ownReady.has(id));
     ids.forEach((id) => seen.add(id));
     if (!fresh.length) return;
-    if (state.enabled) playChime();
+    if (state.enabled) playChime(arriveWith.current);
     arrive.current?.(fresh);
   }, [ids, key]);
 
@@ -239,7 +292,7 @@ export function useOrderChime(ids: string[] | undefined, key: string, ready?: st
     const next = !state.enabled;
     writeSetting(next);
     set({ enabled: next });
-    if (next) playChime();
+    if (next) playChime(arriveWith.current);
   }, []);
 
   return { enabled, press };

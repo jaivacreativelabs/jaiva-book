@@ -9,8 +9,12 @@ export const isParcel = (t: Pick<KitchenTicketDTO, 'orderType'>) => t.orderType 
  * (the 2nd customer at T03 today), "PARCEL · Token 12" or "Dine In · Token 5". (Older table tickets
  * have no Order no.)
  */
-export function ticketPlace(t: Pick<KitchenTicketDTO, 'tableLabel' | 'groupName' | 'orderType' | 'token'>): string {
-  if (t.tableLabel) return `Table ${t.tableLabel}${t.groupName ? ` · ${t.groupName}` : ''}${t.token ? ` · Order\u00a0${t.tableLabel}-${t.token}` /* no line break inside "Order T03-2" */ : ''}`;
+export function ticketPlace(
+  t: Pick<KitchenTicketDTO, 'tableLabel' | 'groupName' | 'orderType' | 'token'>,
+  /** false: a table ticket without its "Order T03-2" (the Kitchen Display does not show it) */
+  withOrder = true,
+): string {
+  if (t.tableLabel) return `Table ${t.tableLabel}${t.groupName ? ` · ${t.groupName}` : ''}${withOrder && t.token ? ` · Order\u00a0${t.tableLabel}-${t.token}` /* no line break inside "Order T03-2" */ : ''}`;
   const kind = isParcel(t) ? 'PARCEL' : 'Dine In';
   return t.token ? `${kind} · Token ${t.token}` : kind;
 }
