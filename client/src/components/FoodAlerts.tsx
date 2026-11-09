@@ -1,11 +1,10 @@
 /**
- * Top bar: a chime for food, on every page of the dashboard, with its Sound on / off button.
- * - Kitchen: a new order arrives (a counter's login hears only its own orders).
+ * Top bar of the Kitchen and Waiter dashboards: a chime for food, with its Sound on / off button.
+ * - Kitchen: a new order arrives (a counter's login hears only its own orders), and a softer
+ *   sound when Ready food is served at a table or a parcel is handed over.
  * - Waiter: the kitchen marked a table's food Ready.
- * - Restaurant Admin: table food is Ready, or a parcel is ready to hand over.
- * - Kitchen and Restaurant Admin also hear a softer sound when Ready food is served at a table or
- *   a parcel is handed over – unless they did it on this screen.
- * Kitchen and Waiter also get a popup with the dishes (FoodNotices), even with the sound off.
+ * Both also get a popup with the dishes (FoodNotices), even with the sound off.
+ * The Restaurant Admin (billing) dashboard has no sound and no switch.
  * Only for branches with the Kitchen Display. The queries share their keys with the Kitchen,
  * Waiter and New Bill pages, so no request is made twice.
  */
@@ -30,7 +29,7 @@ export function FoodAlerts() {
   const { user, activeBranch } = useAuth();
   const role = user?.role;
   const branchId = activeBranch?.id ?? '';
-  const on = Boolean(activeBranch?.kitchenDisplay) && (role === 'KITCHEN' || role === 'WAITER' || role === 'RESTAURANT_ADMIN');
+  const on = Boolean(activeBranch?.kitchenDisplay) && (role === 'KITCHEN' || role === 'WAITER');
 
   const kitchen = useQuery({
     queryKey: ['kitchen', branchId],
@@ -41,13 +40,7 @@ export function FoodAlerts() {
   const ready = useQuery({
     queryKey: ['waiter', branchId],
     queryFn: () => api.get<KitchenTicketDTO[]>('/waiter/tickets'),
-    enabled: on && (role === 'WAITER' || role === 'RESTAURANT_ADMIN'),
-    ...POLL,
-  });
-  const parcels = useQuery({
-    queryKey: ['parcels', branchId],
-    queryFn: () => api.get<KitchenTicketDTO[]>('/kitchen/parcels'),
-    enabled: on && role === 'RESTAURANT_ADMIN',
+    enabled: on && role === 'WAITER',
     ...POLL,
   });
 
@@ -56,8 +49,7 @@ export function FoodAlerts() {
   const queryClient = useQueryClient();
   useEffect(() => {
     if (!on) return;
-    const keys = role === 'KITCHEN' ? ['kitchen'] : role === 'WAITER' ? ['waiter'] : ['waiter', 'parcels'];
-    const refresh = () => keys.forEach((k) => void queryClient.refetchQueries({ queryKey: [k, branchId], type: 'active' }));
+    const refresh = () => void queryClient.refetchQueries({ queryKey: [role === 'KITCHEN' ? 'kitchen' : 'waiter', branchId], type: 'active' });
     let worker: Worker | null = null;
     try {
       worker = new Worker(new URL('../hooks/tick.worker.ts', import.meta.url), { type: 'module' });
@@ -73,19 +65,16 @@ export function FoodAlerts() {
     };
   }, [on, role, branchId, queryClient]);
 
-  const ids = useMemo(() => {
-    if (role === 'KITCHEN') return kitchen.data?.filter((t) => t.status === 'NEW').map((t) => t.id);
-    if (role === 'WAITER') return ready.data?.map((t) => t.id);
-    if (!ready.data || !parcels.data) return undefined; // wait for both, or the first load would chime
-    return [...ready.data, ...parcels.data].map((t) => t.id);
-  }, [role, kitchen.data, ready.data, parcels.data]);
+  const ids = useMemo(
+    () => (role === 'KITCHEN' ? kitchen.data?.filter((t) => t.status === 'NEW').map((t) => t.id) : ready.data?.map((t) => t.id)),
+    [role, kitchen.data, ready.data],
+  );
 
-  // Ready food on screen: when one leaves it, it was served / handed over (Kitchen and Admin hear it).
-  const readyIds = useMemo(() => {
-    if (role === 'KITCHEN') return kitchen.data?.filter((t) => t.status === 'READY').map((t) => t.id);
-    if (role === 'RESTAURANT_ADMIN') return ids;
-    return undefined;
-  }, [role, kitchen.data, ids]);
+  // Kitchen: Ready food leaving the board was served / handed over (the softer sound).
+  const readyIds = useMemo(
+    () => (role === 'KITCHEN' ? kitchen.data?.filter((t) => t.status === 'READY').map((t) => t.id) : undefined),
+    [role, kitchen.data],
+  );
 
   // Popups: Kitchen for new orders, Waiter for Ready food.
   const [notices, setNotices] = useState<Notice[]>([]);

@@ -130,7 +130,8 @@ export function BillingView({
   };
   const setQty = (id: string, quantity: number) => mutate((b) => setBillQuantity(b, id, quantity));
 
-  // Kitchen Display: send the order before payment so the kitchen can start (the bill sends the rest).
+  // Kitchen Display, a table's bill: send the order before payment so the kitchen can start (the bill
+  // sends the rest). New Bill has no such button – Generate Bill sends its whole order.
   const kitchen = useSendToKitchen();
   const [sentNow, setSentNow] = useState<{ draftId: string; sent: KitchenQty[] } | null>(null);
   const kitchenSent = (sentNow && sentNow.draftId === draft?.id ? sentNow.sent : draft?.kitchenSent) ?? [];
@@ -382,7 +383,10 @@ export function BillingView({
           {/* Above the payment buttons: it appears on tapping Cash without moving Cash or Generate Bill. */}
           {payment === 'CASH' && hasItems && editable && <ChangeCalculator key={draft?.id} total={totals?.grandTotal ?? 0} />}
           {payment === 'SPLIT' && hasItems && editable && <SplitPayment key={draft?.id} total={totals?.grandTotal ?? 0} onChange={setSplitParts} />}
-          {activeBranch!.kitchenDisplay && editable && hasItems && <KitchenSendButton pending={toKitchen} sending={kitchen.sending} onSend={() => void sendToKitchen()} />}
+          {/* New Bill has no Send to Kitchen: Generate Bill sends the whole order to the kitchen. A table's bill keeps it. */}
+          {activeBranch!.kitchenDisplay && tableDraftId && editable && hasItems && (
+            <KitchenSendButton pending={toKitchen} sending={kitchen.sending} onSend={() => void sendToKitchen()} />
+          )}
           <PaymentButtons value={payment} onChange={setPayment} disabled={!editable || busy} allowSplit />
           <button className="btn btn-primary btn-lg btn-block" onClick={generate} disabled={!editable || !hasItems || !payment || needSplit || busy || hasUnavailable}>
             {busy ? <Spinner /> : <FileText />} Generate Bill

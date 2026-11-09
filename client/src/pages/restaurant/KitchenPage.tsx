@@ -65,6 +65,8 @@ function TicketCard({
   showStation: boolean;
 }) {
   const queryClient = useQueryClient();
+  // The "done" sound is for Kitchen logins only (the admin's dashboard has no sound).
+  const isKitchen = useAuth().user?.role === 'KITCHEN';
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const status = ticket.status as BoardStatus;
@@ -91,7 +93,7 @@ function TicketCard({
     if (status === 'READY') markOwnAction(ticket.id);
     return run(async () => {
       const next = await api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/advance`, { from: ticket.status });
-      if (next.status === 'READY') playReadyDone([next.id]); // "Mark ready": the kitchen's own "done" sound
+      if (next.status === 'READY' && isKitchen) playReadyDone([next.id]); // "Mark ready": the kitchen's own "done" sound
       return next;
     });
   };
@@ -104,7 +106,7 @@ function TicketCard({
         menuItemId,
       });
       replace(rest);
-      playReadyDone([ready?.id ?? rest.id]); // this dish (or the whole ticket) is Ready
+      if (isKitchen) playReadyDone([ready?.id ?? rest.id]); // this dish (or the whole ticket) is Ready
       if (ready) queryClient.setQueryData<KitchenTicketDTO[]>(boardKey(branchId), (list) => [...(list ?? []), ready]);
     } catch (err) {
       toast.error(err);
