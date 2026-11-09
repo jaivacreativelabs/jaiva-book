@@ -44,7 +44,7 @@ const PARCEL = [{ orderType: 'TAKEAWAY' }, { orderType: null, type: 'COUNTER' }]
 export function toKitchenTicketDTO(t: TicketLean): KitchenTicketDTO {
   return {
     id: String(t._id),
-    number: t.number,
+    number: t.kot || t.number,
     branchId: String(t.branchId),
     draftId: String(t.draftId),
     type: t.type,
@@ -53,7 +53,15 @@ export function toKitchenTicketDTO(t: TicketLean): KitchenTicketDTO {
     orderType: orderTypeOf(t),
     token: t.token ?? null,
     billNumber: t.billNumber ?? '',
-    items: t.items.map((i) => ({ menuItemId: String(i.menuItemId), name: i.name, quantity: i.quantity, note: i.note ?? '' })),
+    items: t.items.map((i) => ({
+      menuItemId: String(i.menuItemId),
+      name: i.name,
+      quantity: i.quantity,
+      note: i.note ?? '',
+      // Older tickets have no per-dish marks: their status says it.
+      ready: Boolean(i.ready) || t.status === 'READY' || t.status === 'SERVED',
+      served: Boolean(i.served) || t.status === 'SERVED',
+    })),
     status: t.status,
     priority: t.priority,
     createdByName: t.createdByName ?? '',
@@ -136,15 +144,20 @@ export async function sendToKitchen(
   const bill = draft.transactionId
     ? await TransactionModel.findById(draft.transactionId).select('billNumber').lean<{ billNumber: string }>()
     : null;
-  const token = draft.type === 'COUNTER' ? await tokenFor(scope, draft, date) : null;
+  // The order's number for the day, the same on all its tickets: a parcel's Token, or which
+  // customer (group) of the day at its table this is – "T01-2".
+  const token = await tokenFor(scope, draft, date);
   const tickets: KitchenTicketDTO[] = [];
-  for (const group of groups) {
-    const seq = await nextSequence(`kot:${scope.branch._id}:${date}`);
+  // One KOT number for this send, the same at every counter it goes to (Lunch and Dessert sent
+  // together are one KOT); each counter's ticket still gets its own unique `number` underneath.
+  const kot = `${date}-${String(await nextSequence(`kot:${scope.branch._id}:${date}`)).padStart(4, '0')}`;
+  for (const [index, group] of groups.entries()) {
     const [ticket] = await KitchenTicketModel.create([
       {
         restaurantId: scope.restaurant._id,
         branchId: scope.branch._id,
-        number: `${date}-${String(seq).padStart(4, '0')}`,
+        number: index === 0 ? kot : `${kot}.${index + 1}`,
+        kot,
         draftId: draft._id,
         type: draft.type,
         tableLabel: table?.label ?? '',
@@ -164,10 +177,16 @@ export async function sendToKitchen(
   return tickets;
 }
 
-/** A counter order's token: the next of the day on its first ticket, the same one after that. */
+/**
+ * An order's number for the day: the next one on its first ticket, the same one after that – so
+ * every KOT of one order (each send, each kitchen counter, each dish sent early) can be told apart
+ * from other orders. Counter orders count the branch's parcel Tokens; a table order counts the
+ * customers (groups) seated at that table today: the first family is 1 until its bill, the next 2.
+ */
 async function tokenFor(scope: BranchScope, draft: DraftLean, date: string): Promise<number> {
   if (draft.kitchenToken) return draft.kitchenToken;
-  const seq = await nextSequence(`token:${scope.branch._id}:${date}`);
+  const key = draft.type === 'COUNTER' ? `token:${scope.branch._id}:${date}` : `order:${scope.branch._id}:${draft.tableId}:${date}`;
+  const seq = await nextSequence(key);
   const set = await DraftModel.updateOne({ _id: draft._id, kitchenToken: null }, { $set: { kitchenToken: seq } });
   if (set.modifiedCount === 1) return seq;
   const current = await DraftModel.findById(draft._id).select('kitchenToken').lean<{ kitchenToken: number | null }>();
@@ -220,102 +239,85 @@ export async function advanceTicket(actor: AuthUser, scope: BranchScope, id: str
   if (from === 'READY' && orderTypeOf(t) === 'TAKEAWAY') assertAdmin(actor, 'Parcels are handed over at the counter');
   const updated = await KitchenTicketModel.findOneAndUpdate(
     { _id: t._id, status: from },
-    { $set: { status: next, statusAt: new Date(), ...(next === 'SERVED' && { servedBy: actor._id, servedByName: actor.name }) } },
+    {
+      $set: {
+        status: next,
+        statusAt: new Date(),
+        ...(next === 'READY' && { 'items.$[].ready': true }),
+        ...(next === 'SERVED' && { 'items.$[].ready': true, 'items.$[].served': true, servedBy: actor._id, servedByName: actor.name }),
+      },
+    },
     { new: true },
   ).lean<TicketLean>();
   if (!updated) {
-    throw conflict(`Ticket #${t.number} was already moved to ${t.status.toLowerCase()}`, 'CONFLICT', { current: toKitchenTicketDTO(t) });
+    throw conflict(`Ticket #${t.kot || t.number} was already moved to ${t.status.toLowerCase()}`, 'CONFLICT', { current: toKitchenTicketDTO(t) });
   }
   return toKitchenTicketDTO(updated);
 }
 
 /**
- * One dish of a ticket is done before the rest: it is split off as its own Ready ticket (number
- * "<ticket>-2", "-3"…), so the waiter can take it now; the rest stays on the ticket, now Preparing.
- * The last dish left moves the ticket itself to Ready. Parcels still go out together (see
- * listReadyParcels). `from` must match, so two screens cannot both send the same dish.
+ * The kitchen ticks one dish of a Preparing ticket as done (or unticks it, while not yet served).
+ * A ticked dish goes to the waiter's Ready to Serve straight away; the ticket itself stays in
+ * Preparing and moves to Ready – as a whole – once every dish is ticked.
  */
-export async function readyDish(
-  actor: AuthUser,
-  scope: BranchScope,
-  id: string,
-  menuItemId: string,
-  from: 'NEW' | 'PREPARING',
-): Promise<{ ticket: KitchenTicketDTO; ready: KitchenTicketDTO | null }> {
+export async function setDishReady(actor: AuthUser, scope: BranchScope, id: string, menuItemId: string, ready: boolean): Promise<KitchenTicketDTO> {
   assertKitchenOn(scope);
   const t = await findTicket(scope, id);
   assertOwnStation(actor, t);
   const dishId = toObjectId(menuItemId, 'dish');
-  const dish = t.items.find((i) => i.menuItemId.equals(dishId));
-  const stale = () =>
-    conflict(`Ticket #${t.number} was already changed on another screen`, 'CONFLICT', { current: toKitchenTicketDTO(t) });
-  if (t.status !== from) throw stale();
-  if (!dish) throw notFound('Dish on this ticket');
+  if (!t.items.some((i) => i.menuItemId.equals(dishId))) throw notFound('Dish on this ticket');
+  const stale = (message: string) => conflict(message, 'CONFLICT', { current: toKitchenTicketDTO(t) });
+  if (t.status !== 'PREPARING') throw stale(`Ticket #${t.kot || t.number} is not being prepared`);
 
-  if (t.items.length === 1) {
-    const updated = await KitchenTicketModel.findOneAndUpdate(
-      { _id: t._id, status: from, 'items.1': { $exists: false } },
-      { $set: { status: 'READY', statusAt: new Date() } },
-      { new: true },
-    ).lean<TicketLean>();
-    if (!updated) throw stale();
-    return { ticket: toKitchenTicketDTO(updated), ready: null };
-  }
-
-  const now = new Date();
-  const rest = await KitchenTicketModel.findOneAndUpdate(
-    { _id: t._id, status: from, 'items.1': { $exists: true }, 'items.menuItemId': dishId },
-    { $pull: { items: { menuItemId: dishId } }, $set: { status: 'PREPARING', ...(from === 'NEW' && { statusAt: now }) } },
+  const ticked = await KitchenTicketModel.findOneAndUpdate(
+    { _id: t._id, status: 'PREPARING', items: { $elemMatch: { menuItemId: dishId, served: { $ne: true } } } },
+    { $set: { 'items.$.ready': ready } },
     { new: true },
   ).lean<TicketLean>();
-  if (!rest) throw stale();
-  const part = (await nextSequence(`kot-part:${t._id}`)) + 1;
-  try {
-    const ready = new KitchenTicketModel({
-      restaurantId: t.restaurantId,
-      branchId: t.branchId,
-      number: `${t.number}-${part}`,
-      draftId: t.draftId,
-      type: t.type,
-      tableLabel: t.tableLabel,
-      groupName: t.groupName,
-      orderType: t.orderType,
-      token: t.token,
-      billNumber: t.billNumber,
-      items: [dish],
-      status: 'READY',
-      priority: t.priority,
-      statusAt: now,
-      createdBy: t.createdBy,
-      createdByName: t.createdByName,
-      stationId: t.stationId,
-      stationName: t.stationName,
-      // Ordered with the rest of the ticket: the waiting time runs from then.
-      createdAt: t.createdAt,
-      updatedAt: now,
-    });
-    await ready.save({ timestamps: false });
-    return { ticket: toKitchenTicketDTO(rest), ready: toKitchenTicketDTO(ready.toObject() as TicketLean) };
-  } catch (err) {
-    // Put the dish back rather than lose it.
-    await KitchenTicketModel.updateOne({ _id: t._id }, { $push: { items: dish } });
-    throw err;
-  }
+  if (!ticked) throw stale('This dish was already served or the ticket moved on');
+  if (!ready) return toKitchenTicketDTO(ticked);
+  // Every dish ticked: the whole ticket is Ready.
+  const whole = await KitchenTicketModel.findOneAndUpdate(
+    { _id: t._id, status: 'PREPARING', items: { $not: { $elemMatch: { ready: { $ne: true } } } } },
+    { $set: { status: 'READY', statusAt: new Date() } },
+    { new: true },
+  ).lean<TicketLean>();
+  return toKitchenTicketDTO(whole ?? ticked);
 }
 
-/** Waiter board: food the kitchen marked Ready, longest waiting first (priority on top). Parcels go to the counter instead. */
+/**
+ * Waiter board: food the kitchen marked Ready – whole tickets, and dishes ticked on tickets still
+ * being prepared – longest waiting first (priority on top). Parcels go to the counter instead.
+ */
 export async function listReady(scope: BranchScope): Promise<KitchenTicketDTO[]> {
   assertKitchenOn(scope);
-  const rows = await KitchenTicketModel.find({ branchId: scope.branch._id, status: 'READY', $nor: PARCEL })
+  const rows = await KitchenTicketModel.find({
+    branchId: scope.branch._id,
+    $nor: PARCEL,
+    $or: [{ status: 'READY' }, { status: 'PREPARING', items: { $elemMatch: { ready: true, served: { $ne: true } } } }],
+  })
     .sort({ priority: -1, statusAt: 1 })
     .limit(200)
     .lean<TicketLean[]>();
   return rows.map(toKitchenTicketDTO);
 }
 
-/** A waiter carried a Ready order to its table. */
-export function serveTicket(actor: AuthUser, scope: BranchScope, id: string): Promise<KitchenTicketDTO> {
-  return advanceTicket(actor, scope, id, 'READY');
+/**
+ * A waiter carried food to its table: a whole Ready ticket (it is Served), or the dishes ticked so
+ * far on a ticket still being prepared (they are served; the rest follow when ticked).
+ */
+export async function serveTicket(actor: AuthUser, scope: BranchScope, id: string): Promise<KitchenTicketDTO> {
+  const t = await findTicket(scope, id);
+  if (t.status !== 'PREPARING') return advanceTicket(actor, scope, id, 'READY');
+  assertKitchenOn(scope);
+  if (orderTypeOf(t) === 'TAKEAWAY') throw forbidden('Parcels are handed over at the counter');
+  const updated = await KitchenTicketModel.findOneAndUpdate(
+    { _id: t._id, status: 'PREPARING', items: { $elemMatch: { ready: true, served: { $ne: true } } } },
+    { $set: { 'items.$[dish].served': true } },
+    { new: true, arrayFilters: [{ 'dish.ready': true }] },
+  ).lean<TicketLean>();
+  if (!updated) throw conflict('Nothing on this ticket is waiting to be served', 'CONFLICT', { current: toKitchenTicketDTO(t) });
+  return toKitchenTicketDTO(updated);
 }
 
 /**

@@ -111,7 +111,7 @@ export const advanceKitchenTicket = async (req: Request, res: Response) => {
 };
 export const readyKitchenDish = async (req: Request, res: Response) => {
   const body = parse(kitchenDishReadySchema, req.body);
-  res.json({ data: await kitchen.readyDish(currentUser(req), getBranchScope(req), id(req), body.menuItemId, body.from) });
+  res.json({ data: await kitchen.setDishReady(currentUser(req), getBranchScope(req), id(req), body.menuItemId, body.ready) });
 };
 export const waiterBoard = async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store');

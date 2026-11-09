@@ -5,7 +5,7 @@
  */
 import { isParcel, KITCHEN_BOARD_STATUSES, ticketPlace, type KitchenTicketDTO } from '@rb/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChefHat, Package, Printer, Star, Timer } from 'lucide-react';
+import { ChefHat, Package, Printer, Star, Timer } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { StaffTabs } from '../../components/StaffTabs';
@@ -55,13 +55,14 @@ function TicketCard({
   ticket,
   branchId,
   now,
-  canHandOver,
+  viewOnly,
   showStation,
 }: {
   ticket: KitchenTicketDTO;
   branchId: string;
   now: number;
-  canHandOver: boolean;
+  /** The Restaurant Admin's board: see every ticket, change none (only the slip can be printed). */
+  viewOnly: boolean;
   showStation: boolean;
 }) {
   const queryClient = useQueryClient();
@@ -97,32 +98,34 @@ function TicketCard({
       return next;
     });
   };
-  // One dish done before the rest: it goes out on its own (a new Ready ticket), the rest keeps cooking.
-  const dishReady = async (menuItemId: string) => {
-    setBusy(true);
+  // Preparing: tick a dish done – it goes to the waiter's Ready to Serve now; the ticket moves to
+  // Ready (as a whole) once every dish is ticked. Untick a mistake while it is not served yet.
+  // The tick shows at once; the server's answer then confirms it (or it springs back on an error).
+  const [ticking, setTicking] = useState<Record<string, boolean>>({});
+  const tickDish = async (menuItemId: string, ready: boolean) => {
+    setTicking((m) => ({ ...m, [menuItemId]: ready }));
     try {
-      const { ticket: rest, ready } = await api.post<{ ticket: KitchenTicketDTO; ready: KitchenTicketDTO | null }>(`/kitchen/tickets/${ticket.id}/dish-ready`, {
-        from: ticket.status,
-        menuItemId,
-      });
-      replace(rest);
-      if (isKitchen) playReadyDone([ready?.id ?? rest.id]); // this dish (or the whole ticket) is Ready
-      if (ready) queryClient.setQueryData<KitchenTicketDTO[]>(boardKey(branchId), (list) => [...(list ?? []), ready]);
+      const next = await api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/dish-ready`, { menuItemId, ready });
+      replace(next);
+      if (ready && isKitchen) playReadyDone([`${ticket.id}:${menuItemId}`]);
     } catch (err) {
       toast.error(err);
       if (err instanceof ApiError && err.code === 'CONFLICT') void queryClient.invalidateQueries({ queryKey: boardKey(branchId) });
     } finally {
-      setBusy(false);
+      setTicking((m) => {
+        const rest = { ...m };
+        delete rest[menuItemId];
+        return rest;
+      });
     }
   };
-  const perDish = status !== 'READY' && ticket.items.length > 1;
-  const handOver = () => {
-    markOwnAction(ticket.id);
-    return run(() => api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/handed-over`));
-  };
+  // Checkboxes only while Preparing, and only when there is more than one dish (one dish: Mark ready).
+  const perDish = !viewOnly && status === 'PREPARING' && ticket.items.length > 1;
   const togglePriority = () => run(() => api.post<KitchenTicketDTO>(`/kitchen/tickets/${ticket.id}/priority`, { priority: !ticket.priority }));
-  // A Ready parcel waits for the counter: admins can hand it over here, the kitchen only sees that it waits.
+  // A Ready parcel waits for the counter, which hands it over on New Bill.
   const parcelWaiting = status === 'READY' && isParcel(ticket);
+  const viewText =
+    status === 'NEW' ? 'Waiting for the kitchen' : status === 'PREPARING' ? 'Being prepared' : parcelWaiting ? 'Waiting at the counter' : 'Waiting for the waiter';
 
   return (
     <article className={cx('kds-ticket', ticket.priority && 'priority')} aria-label={`Ticket ${ticket.number}`}>
@@ -142,41 +145,45 @@ function TicketCard({
       </header>
       <ul className="kds-items">
         {ticket.items.map((i) => (
-          <li key={i.menuItemId} className={cx(perDish && 'kds-dish')}>
-            <div style={{ minWidth: 0 }}>
-              <strong>{i.quantity}×</strong> {i.name}
-              {i.note && <span className="kds-note">{i.note}</span>}
-            </div>
-            {perDish && (
-              <button
-                type="button"
-                className="kds-dish-ready"
-                onClick={() => dishReady(i.menuItemId)}
-                disabled={busy}
-                title={`${i.name} is ready – send it now`}
-                aria-label={`${i.quantity} ${i.name} ready`}
-              >
-                <Check size={15} /> <span className="kds-dish-ready-text">Ready</span>
-              </button>
+          <li key={i.menuItemId} className={cx(perDish && 'kds-dish', perDish && (ticking[i.menuItemId] ?? i.ready) && 'ticked')}>
+            {perDish ? (
+              <label className="kds-dish-check" title={i.served ? 'Already served' : i.ready ? 'Ready – sent to the waiter (tap to undo)' : 'Tick when ready – it goes to the waiter'}>
+                <input
+                  type="checkbox"
+                  checked={ticking[i.menuItemId] ?? i.ready}
+                  disabled={busy || i.served || i.menuItemId in ticking}
+                  onChange={(e) => void tickDish(i.menuItemId, e.target.checked)}
+                />
+                <span style={{ minWidth: 0 }}>
+                  <strong>{i.quantity}×</strong> {i.name}
+                  {i.note && <span className="kds-note">{i.note}</span>}
+                </span>
+                {i.ready && <span className={cx('kds-dish-state', i.served && 'served')}>{i.served ? 'Served' : 'With waiter'}</span>}
+              </label>
+            ) : (
+              <div style={{ minWidth: 0 }}>
+                <strong>{i.quantity}×</strong> {i.name}
+                {i.note && <span className="kds-note">{i.note}</span>}
+              </div>
             )}
           </li>
         ))}
       </ul>
       <footer className="kds-ticket-actions">
-        {!parcelWaiting ? (
+        {viewOnly ? (
+          <span className="kds-at-counter kds-view-status">{viewText}</span>
+        ) : !parcelWaiting ? (
           <button className={cx('btn btn-sm', status === 'READY' ? 'btn-outline-primary' : 'btn-primary')} onClick={advance} disabled={busy}>
             {busy && <Spinner />} {COLUMN[status].action}
-          </button>
-        ) : canHandOver ? (
-          <button className="btn btn-sm btn-outline-primary" onClick={handOver} disabled={busy}>
-            {busy && <Spinner />} Handed over
           </button>
         ) : (
           <span className="kds-at-counter">Waiting at the counter</span>
         )}
-        <button className={cx('icon-btn', ticket.priority && 'active')} onClick={togglePriority} disabled={busy} title={ticket.priority ? 'Remove priority' : 'Mark as priority'} aria-pressed={ticket.priority}>
-          <Star size={17} className={ticket.priority ? 'kds-star-on' : undefined} />
-        </button>
+        {!viewOnly && (
+          <button className={cx('icon-btn', ticket.priority && 'active')} onClick={togglePriority} disabled={busy} title={ticket.priority ? 'Remove priority' : 'Mark as priority'} aria-pressed={ticket.priority}>
+            <Star size={17} className={ticket.priority ? 'kds-star-on' : undefined} />
+          </button>
+        )}
         <button className="icon-btn" onClick={() => openKitchenSlip(ticket.id, branchId)} title="Print kitchen slip" aria-label="Print kitchen slip">
           <Printer size={17} />
         </button>
@@ -188,7 +195,8 @@ function TicketCard({
 export function KitchenPage() {
   const { activeBranch, user } = useAuth();
   const branchId = activeBranch!.id;
-  const canHandOver = user?.role === 'RESTAURANT_ADMIN';
+  // Only Kitchen logins move tickets; the Restaurant Admin's Kitchen page is to watch.
+  const viewOnly = user?.role !== 'KITCHEN';
   const now = useNow();
   // Kitchen counters: a counter's login only gets its own tickets (from the server); everyone
   // else can narrow the board to one counter.
@@ -222,7 +230,13 @@ export function KitchenPage() {
       <StaffTabs />
       <PageHeader
         title={myStation ? `Kitchen Display · ${myStation.name}` : 'Kitchen Display'}
-        subtitle={myStation ? `Orders for the ${myStation.name} counter · New → Preparing → Ready` : 'Live order tickets · New → Preparing → Ready'}
+        subtitle={
+          myStation
+            ? `Orders for the ${myStation.name} counter · New → Preparing → Ready`
+            : viewOnly
+              ? 'View only · the kitchen moves orders New → Preparing → Ready'
+              : 'Live order tickets · New → Preparing → Ready'
+        }
       />
       {showStation && stations.length > 1 && (
         <div className="chips kds-stations" role="radiogroup" aria-label="Kitchen counter">
@@ -270,7 +284,7 @@ export function KitchenPage() {
                   {list.length === 0 ? (
                     <p className="kds-empty">No tickets</p>
                   ) : (
-                    list.map((t) => <TicketCard key={t.id} ticket={t} branchId={branchId} now={now} canHandOver={canHandOver} showStation={showStation} />)
+                    list.map((t) => <TicketCard key={t.id} ticket={t} branchId={branchId} now={now} viewOnly={viewOnly} showStation={showStation} />)
                   )}
                 </div>
               </section>

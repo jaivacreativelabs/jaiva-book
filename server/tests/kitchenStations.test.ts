@@ -10,6 +10,7 @@ interface Draft {
 interface Ticket {
   id: string;
   draftId: string;
+  number: string;
   status: string;
   stationId: string | null;
   stationName: string;
@@ -88,6 +89,9 @@ describe('kitchen counters', () => {
       ['Tiffin', ['2× Dosa', '1× Coffee']],
       ['Juice', ['1× Fresh Juice']],
     ]);
+    // Sent together: one KOT number at both counters.
+    expect(tickets[1].number).toBe(tickets[0].number);
+    expect(tickets[0].number).toMatch(/^\d{8}-\d{4}$/);
   });
 
   it('each counter sees and moves only its own tickets', async () => {

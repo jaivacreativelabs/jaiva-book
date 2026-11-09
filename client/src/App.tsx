@@ -102,11 +102,12 @@ export function App() {
       </Route>
       <Route
         element={
-          <RequireRole roles={['RESTAURANT_ADMIN', 'WAITER']}>
+          <RequireRole roles={['WAITER']}>
             <AppLayout />
           </RequireRole>
         }
       >
+        {/* Ready to Serve: waiters only (taken off the Restaurant Admin's dashboard) */}
         <Route path="/waiter" element={<WaiterPage />} />
       </Route>
       <Route

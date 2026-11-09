@@ -3888,6 +3888,13 @@ html.app-open body {
 }
 .kds-stations {
   margin-bottom: 12px;
+  /* The board below fills the page: without this the chips row was squashed to a thin strip */
+  flex-shrink: 0;
+}
+/* The admin's view-only board: where each ticket is, in place of the buttons */
+.kds-at-counter.kds-view-status {
+  flex: 1;
+  color: var(--color-text-muted);
 }
 /* Super Admin › Bills & Kitchen: one kitchen counter and its categories */
 .kitchen-counter {
@@ -4000,6 +4007,30 @@ html.app-open body {
 }
 .served-ticket {
   border-left: 4px solid var(--color-border-strong);
+}
+/* Served Orders: the KOTs one order went to the kitchen in */
+.served-kots {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0 0;
+  border-top: 1px dashed var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+.served-kots li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.served-kots li span {
+  white-space: nowrap;
+}
+.served-kot-no {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 .served-ticket.parcel {
   border-left-color: var(--color-accent-purple);
@@ -4282,6 +4313,49 @@ html.app-open body {
   height: 36px;
   margin-top: 3px;
   font-size: 16px;
+}
+/* Kitchen, Preparing: tick each dish when it is ready – it goes to the waiter straight away */
+.kds-dish-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  cursor: pointer;
+}
+.kds-dish-check input {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+.kds-dish-check input:disabled {
+  cursor: default;
+}
+.kds-dish.ticked .kds-dish-check > span:first-of-type {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+.kds-dish-state {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.kds-dish-state.served {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+}
+/* Waiter: a ticket still cooking – how many dishes are yet to come */
+.waiter-more {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
 }
 /* Kitchen: a dish with its own Ready button (sends just that dish) */
 .kds-dish {

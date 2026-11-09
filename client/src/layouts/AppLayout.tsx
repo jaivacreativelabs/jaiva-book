@@ -203,7 +203,7 @@ export function AppLayout() {
       : isWaiter
         ? [TAKE_ORDER_NAV, WAITER_NAV, SERVED_NAV]
         : activeBranch?.kitchenDisplay
-          ? [...RESTAURANT_NAV, KITCHEN_NAV, WAITER_NAV, SERVED_NAV]
+          ? [...RESTAURANT_NAV, KITCHEN_NAV, SERVED_NAV] // Ready to Serve is the waiters' page only
           : RESTAURANT_NAV;
   // Phones: Restaurant Admins get a bottom tab bar, the Super Admin a slide-in menu; a Kitchen
   // login has a single page and needs neither.

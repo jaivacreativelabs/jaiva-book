@@ -66,7 +66,11 @@ export function FoodAlerts() {
   }, [on, role, branchId, queryClient]);
 
   const ids = useMemo(
-    () => (role === 'KITCHEN' ? kitchen.data?.filter((t) => t.status === 'NEW').map((t) => t.id) : ready.data?.map((t) => t.id)),
+    () =>
+      role === 'KITCHEN'
+        ? kitchen.data?.filter((t) => t.status === 'NEW').map((t) => t.id)
+        : // Waiter: every dish that is ready and not served yet (a ticket can get them one by one)
+          ready.data?.flatMap((t) => t.items.filter((i) => i.ready && !i.served).map((i) => `${t.id}:${i.menuItemId}`)),
     [role, kitchen.data, ready.data],
   );
 
@@ -93,8 +97,15 @@ export function FoodAlerts() {
     (fresh: string[]) => {
       if (role !== 'KITCHEN' && role !== 'WAITER') return;
       const source = role === 'KITCHEN' ? kitchen.data : ready.data;
-      const added = fresh.flatMap((id) => {
-        const ticket = source?.find((t) => t.id === id);
+      // Waiter keys are "ticket:dish": one popup per ticket, with just the dishes that became ready.
+      const byTicket = new Map<string, Set<string>>();
+      for (const key of fresh) {
+        const [tid, dish] = key.split(':');
+        byTicket.set(tid, (byTicket.get(tid) ?? new Set()).add(dish ?? ''));
+      }
+      const added = [...byTicket].flatMap(([id, dishes]) => {
+        const found = source?.find((t) => t.id === id);
+        const ticket = found && role === 'WAITER' ? { ...found, items: found.items.filter((i) => dishes.has(i.menuItemId)) } : found;
         return ticket
           ? [
               {

@@ -304,12 +304,17 @@ export interface KitchenTicketDTO {
   groupName: string;
   /** TAKEAWAY tickets are parcels: handed over at the counter instead of served */
   orderType: OrderType;
-  /** Counter orders: the day's token number the customer waits with; null for tables */
+  /** The order's number for the day, the same on all its tickets: a parcel's Token (the customer waits
+   *  with it), or for a table order which customer at that table today ("T01-2"). Null on older
+   *  table tickets. */
   token: number | null;
   /** The bill's number once it is generated; "" before */
   billNumber: string;
-  /** `note`: what the order asked of the kitchen for that dish ("no onion"), "" when nothing */
-  items: { menuItemId: string; name: string; quantity: number; note: string }[];
+  /**
+   * `note`: what the order asked of the kitchen for that dish ("no onion"), "" when nothing.
+   * `ready`: the kitchen ticked it done (it is on the waiter's Ready to Serve); `served`: it reached the table.
+   */
+  items: { menuItemId: string; name: string; quantity: number; note: string; ready: boolean; served: boolean }[];
   status: KitchenStatus;
   priority: boolean;
   createdByName: string;

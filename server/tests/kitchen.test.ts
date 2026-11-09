@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { ticketPlace } from '@rb/shared';
 import { KitchenTicketModel } from '../src/models/index.js';
 import { buildWorld, Client, key, ok, PASSWORD, useTestDatabase, type World } from './helpers.js';
 
@@ -324,42 +325,111 @@ describe('dish notes', () => {
   });
 });
 
-describe('one dish at a time', () => {
-  type Item = { menuItemId: string; name: string; quantity: number };
-  type Dish = { ticket: Ticket & { items: Item[] }; ready: (Ticket & { items: Item[] }) | null };
-  let t: Ticket & { items: Item[] };
-  const dishReady = (c: Client, from: string, menuItemId: string) => c.post(`/api/v1/kitchen/tickets/${t.id}/dish-ready`, { from, menuItemId });
+describe('ticking dishes', () => {
+  type Item = { menuItemId: string; name: string; quantity: number; ready: boolean; served: boolean };
+  type T = Omit<Ticket, 'items'> & { items: Item[] };
+  let t: T;
+  const tick = (c: Client, menuItemId: string, ready = true) => c.post(`/api/v1/kitchen/tickets/${t.id}/dish-ready`, { menuItemId, ready });
+  const waiterBoard = async () => ok<T[]>(await w.adminA1.get('/api/v1/waiter/tickets'));
+  const marks = (x: T) => x.items.map((i) => [i.name, i.ready, i.served]);
 
-  it('sends a finished dish to the waiter on its own; the rest keeps cooking', async () => {
-    let g = ok<Draft>(await w.adminA1.post('/api/v1/bills/table-groups', { tableId: w.tables.t1, guestCount: 2, groupName: 'Dish' }), 201);
+  it('nothing can be ticked until the kitchen starts preparing', async () => {
+    let g = ok<Draft>(await w.adminA1.post('/api/v1/bills/table-groups', { tableId: w.tables.t1, guestCount: 2, groupName: 'Tick' }), 201);
     g = await save(w.adminA1, g, [
       { menuItemId: w.items.idly, quantity: 2 },
       { menuItemId: w.items.dosa, quantity: 1 },
       { menuItemId: w.items.coffee, quantity: 1 },
     ]);
-    t = ok<(Ticket & { items: Item[] })[]>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`))[0];
-
-    const first = ok<Dish>(await dishReady(cook, 'NEW', w.items.dosa));
-    expect([first.ticket.id, first.ticket.status, lines(first.ticket)]).toEqual([t.id, 'PREPARING', [['Idly', 2], ['Coffee', 1]]]);
-    expect(first.ready).toMatchObject({ number: `${t.number}-2`, status: 'READY', tableLabel: 'T1', groupName: 'Dish', draftId: g.id });
-    expect(lines(first.ready!)).toEqual([['Dosa', 1]]);
-    expect(first.ready!.createdAt).toBe(t.createdAt);
-    expect(ok<Ticket[]>(await w.adminA1.get('/api/v1/waiter/tickets')).some((x) => x.id === first.ready!.id)).toBe(true);
-
-    // The other screen still thinks it is New: refused, nothing sent twice.
-    const stale = await dishReady(cook, 'NEW', w.items.idly);
-    expect([stale.status, stale.body.error.details.current.status]).toEqual([409, 'PREPARING']);
-    expect((await dishReady(cook, 'PREPARING', w.items.dosa)).status).toBe(404);
-
-    const second = ok<Dish>(await dishReady(cook, 'PREPARING', w.items.coffee));
-    expect(second.ready!.number).toBe(`${t.number}-3`);
-    // The last dish moves the ticket itself.
-    const last = ok<Dish>(await dishReady(cook, 'PREPARING', w.items.idly));
-    expect([last.ticket.status, last.ready, lines(last.ticket)]).toEqual(['READY', null, [['Idly', 2]]]);
-    expect((await dishReady(cook, 'READY', w.items.idly)).status).toBe(400);
+    t = ok<T[]>(await w.adminA1.post(`/api/v1/bills/${g.id}/kitchen`))[0];
+    expect((await tick(cook, w.items.dosa)).status).toBe(409);
+    ok(await cook.post(`/api/v1/kitchen/tickets/${t.id}/advance`, { from: 'NEW' }));
   });
 
-  it('another branch cannot send its dishes', async () => {
-    expect((await w.adminA2.post(`/api/v1/kitchen/tickets/${t.id}/dish-ready`, { from: 'PREPARING', menuItemId: w.items.idly })).status).toBe(404);
+  it('a ticked dish goes to the waiter now; the ticket stays in Preparing', async () => {
+    const after = ok<T>(await tick(cook, w.items.dosa));
+    expect(after.status).toBe('PREPARING');
+    expect(marks(after)).toEqual([
+      ['Idly', false, false],
+      ['Dosa', true, false],
+      ['Coffee', false, false],
+    ]);
+    expect((await waiterBoard()).find((x) => x.id === t.id)).toBeTruthy();
+    // Untick while not served yet: it leaves the waiter's board again.
+    ok(await tick(cook, w.items.dosa, false));
+    expect((await waiterBoard()).some((x) => x.id === t.id)).toBe(false);
+    ok(await tick(cook, w.items.dosa));
+  });
+
+  it('the waiter serves the ticked dish; the rest keeps cooking', async () => {
+    const served = ok<T>(await w.adminA1.post(`/api/v1/waiter/tickets/${t.id}/served`));
+    expect(served.status).toBe('PREPARING');
+    expect(marks(served)[1]).toEqual(['Dosa', true, true]);
+    expect((await waiterBoard()).some((x) => x.id === t.id)).toBe(false);
+    expect((await w.adminA1.post(`/api/v1/waiter/tickets/${t.id}/served`)).status).toBe(409); // nothing ticked now
+    expect((await tick(cook, w.items.dosa, false)).status).toBe(409); // served: cannot be unticked
+    // The table shows the Dosa as served.
+    const { tables } = ok<{ tables: { groups: { draftId: string; kitchenServed: { menuItemId: string; quantity: number }[] }[] }[] }>(await w.adminA1.get('/api/v1/tables'));
+    expect(tables.flatMap((x) => x.groups).find((g) => g.draftId === t.draftId)!.kitchenServed).toEqual([{ menuItemId: w.items.dosa, quantity: 1 }]);
+  });
+
+  it('the last tick moves the whole ticket to Ready; serving it finishes the order', async () => {
+    expect(ok<T>(await tick(cook, w.items.idly)).status).toBe('PREPARING');
+    const ready = ok<T>(await tick(cook, w.items.coffee));
+    expect(ready.status).toBe('READY');
+    expect(ready.number).toBe(t.number); // one ticket all along
+    const done = ok<T>(await w.adminA1.post(`/api/v1/waiter/tickets/${t.id}/served`));
+    expect([done.status, marks(done)]).toEqual([
+      'SERVED',
+      [
+        ['Idly', true, true],
+        ['Dosa', true, true],
+        ['Coffee', true, true],
+      ],
+    ]);
+  });
+
+  it('another branch cannot tick its dishes', async () => {
+    expect((await w.adminA2.post(`/api/v1/kitchen/tickets/${t.id}/dish-ready`, { menuItemId: w.items.idly, ready: true })).status).toBe(404);
+  });
+});
+
+describe('order numbers', () => {
+  it('every KOT of one table order shows the same Order no.; the next customer at that table gets the next one; parcels keep their own Tokens', async () => {
+    const order = async (tableId: string, items: { menuItemId: string; quantity: number }[]) => {
+      let g = ok<Draft>(await w.adminA1.post('/api/v1/bills/table-groups', { tableId, guestCount: 1 }), 201);
+      g = await save(w.adminA1, g, items);
+      return g;
+    };
+    let a = await order(w.tables.t2, [{ menuItemId: w.items.idly, quantity: 1 }]);
+    const a1 = ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${a.id}/kitchen`))[0];
+    const b = await order(w.tables.t2, [{ menuItemId: w.items.vada, quantity: 1 }]);
+    const b1 = ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${b.id}/kitchen`))[0];
+    // More for the first order later: a new KOT number, the same Order no.
+    a = await save(w.adminA1, a, [
+      { menuItemId: w.items.idly, quantity: 1 },
+      { menuItemId: w.items.dosa, quantity: 1 },
+    ]);
+    const a2 = ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${a.id}/kitchen`))[0];
+    expect(a1.token).toBeGreaterThan(0);
+    expect(a2.number).not.toBe(a1.number);
+    expect(a2.token).toBe(a1.token);
+    expect(b1.token).toBe(a1.token! + 1);
+    // Every table counts its own customers: a new table starts at 1, shown as "Order T9-1".
+    const t9 = ok<{ id: string }>(await w.adminA1.post('/api/v1/tables', { label: 'T9', seats: 4, shape: 'SQUARE', floor: 'Ground Floor' }), 201).id;
+    const c1 = await order(t9, [{ menuItemId: w.items.idly, quantity: 1 }]);
+    const k1 = ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${c1.id}/kitchen`))[0];
+    expect([k1.tableLabel, k1.token]).toEqual(['T9', 1]);
+    expect(ticketPlace(k1 as Parameters<typeof ticketPlace>[0])).toBe('Table T9 · Group 1 · Order T9-1');
+    // The family after them at T9 (once the first has paid) is customer 2.
+    expect((await finalize(w.adminA1, ok<Draft>(await w.adminA1.get(`/api/v1/bills/${c1.id}`)))).status).toBe(201);
+    const c2 = await order(t9, [{ menuItemId: w.items.vada, quantity: 1 }]);
+    expect(ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${c2.id}/kitchen`))[0].token).toBe(2);
+
+    // A parcel's Token is counted on its own.
+    const tokensBefore = (await board(w.adminA1)).filter((t) => t.orderType === 'TAKEAWAY').map((t) => t.token ?? 0);
+    let c = ok<Draft>(await w.adminA1.get('/api/v1/bills/counter'));
+    c = await save(w.adminA1, c, [{ menuItemId: w.items.coffee, quantity: 1 }]);
+    const p = ok<Ticket[]>(await w.adminA1.post(`/api/v1/bills/${c.id}/kitchen`))[0];
+    expect(p.token).toBe(Math.max(0, ...tokensBefore) + 1);
   });
 });

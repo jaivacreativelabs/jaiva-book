@@ -32,12 +32,15 @@ function ReadyCard({ ticket, branchId, now }: { ticket: KitchenTicketDTO; branch
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const minutes = Math.max(0, Math.floor((now - new Date(ticket.statusAt).getTime()) / 60_000));
+  const waiting = ticket.items.filter((i) => i.ready && !i.served);
+  const more = ticket.items.filter((i) => !i.ready).length;
   const drop = () => queryClient.setQueryData<KitchenTicketDTO[]>(boardKey(branchId), (list) => (list ?? []).filter((t) => t.id !== ticket.id));
 
   const serve = async () => {
     setBusy(true);
     try {
       markOwnAction(ticket.id); // no "served" sound on this screen for its own tap
+      // Serves all of it, or only the dishes ticked so far (the rest come back here when ticked).
       await api.post<KitchenTicketDTO>(`/waiter/tickets/${ticket.id}/served`);
       drop();
     } catch (err) {
@@ -65,13 +68,15 @@ function ReadyCard({ ticket, branchId, now }: { ticket: KitchenTicketDTO; branch
         </span>
       </header>
       <ul className="kds-items">
-        {ticket.items.map((i) => (
+        {/* Only what is ready to carry: on a ticket still cooking, the dishes the kitchen ticked */}
+        {waiting.map((i) => (
           <li key={i.menuItemId}>
             <strong>{i.quantity}×</strong> {i.name}
             {i.note && <span className="kds-note">{i.note}</span>}
           </li>
         ))}
       </ul>
+      {more > 0 && <p className="waiter-more">{more} more dish{more > 1 ? 'es' : ''} still cooking</p>}
       <button className="btn btn-primary btn-lg btn-block" onClick={() => void serve()} disabled={busy}>
         {busy ? <Spinner /> : <Check />} Served
       </button>

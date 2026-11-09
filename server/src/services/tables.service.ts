@@ -30,16 +30,18 @@ async function kitchenByDraft(drafts: DraftLean[]): Promise<Kitchen> {
   const out: Kitchen = { status: new Map(), served: new Map() };
   if (!drafts.length) return out;
   const tickets = await KitchenTicketModel.find({ draftId: { $in: drafts.map((d) => d._id) }, status: { $in: [...KITCHEN_BOARD_STATUSES, 'SERVED'] } })
-    .select('draftId status items.menuItemId items.quantity')
-    .lean<{ draftId: Types.ObjectId; status: KitchenStatus; items: { menuItemId: Types.ObjectId; quantity: number }[] }[]>();
+    .select('draftId status items.menuItemId items.quantity items.served')
+    .lean<{ draftId: Types.ObjectId; status: KitchenStatus; items: { menuItemId: Types.ObjectId; quantity: number; served?: boolean }[] }[]>();
   for (const t of tickets) {
     const key = String(t.draftId);
-    if (t.status === 'SERVED') {
+    // Served: the whole ticket, or the dishes a waiter took early while the rest was still cooking.
+    const served = t.status === 'SERVED' ? t.items : t.items.filter((i) => i.served);
+    if (served.length) {
       const dishes = out.served.get(key) ?? new Map<string, number>();
-      for (const i of t.items) dishes.set(String(i.menuItemId), (dishes.get(String(i.menuItemId)) ?? 0) + i.quantity);
+      for (const i of served) dishes.set(String(i.menuItemId), (dishes.get(String(i.menuItemId)) ?? 0) + i.quantity);
       out.served.set(key, dishes);
-      continue;
     }
+    if (t.status === 'SERVED') continue;
     const status = t.status as BoardStatus;
     const prev = out.status.get(key);
     if (!prev || KITCHEN_RANK[status] > KITCHEN_RANK[prev]) out.status.set(key, status);
