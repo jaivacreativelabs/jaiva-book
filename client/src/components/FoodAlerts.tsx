@@ -10,7 +10,7 @@
  * Waiter and New Bill pages, so no request is made twice.
  */
 import type { KitchenTicketDTO } from '@rb/shared';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Volume2, VolumeX } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FoodNotices, NOTICE_MS, type Notice } from './FoodNotices';
@@ -19,9 +19,11 @@ import { api } from '../services/api';
 import { useAuth } from '../store/auth';
 import { cx } from '../utils/format';
 
+// Every 3 s – and right away when the screen comes back to the front (see below).
 const POLL = {
-  refetchInterval: 5_000,
+  refetchInterval: 3_000,
   refetchIntervalInBackground: true,
+  staleTime: 0,
 } as const;
 
 export function FoodAlerts() {
@@ -48,6 +50,28 @@ export function FoodAlerts() {
     enabled: on && role === 'RESTAURANT_ADMIN',
     ...POLL,
   });
+
+  // Keep the alerts on time when this screen is not in front: browsers slow a background tab's
+  // timers to about once a minute, but not a worker's. Back in front: check straight away.
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!on) return;
+    const keys = role === 'KITCHEN' ? ['kitchen'] : role === 'WAITER' ? ['waiter'] : ['waiter', 'parcels'];
+    const refresh = () => keys.forEach((k) => void queryClient.refetchQueries({ queryKey: [k, branchId], type: 'active' }));
+    let worker: Worker | null = null;
+    try {
+      worker = new Worker(new URL('../hooks/tick.worker.ts', import.meta.url), { type: 'module' });
+      worker.onmessage = () => document.hidden && refresh();
+    } catch {
+      // No workers here: the normal 3 s check still runs.
+    }
+    const onShow = () => !document.hidden && refresh();
+    document.addEventListener('visibilitychange', onShow);
+    return () => {
+      worker?.terminate();
+      document.removeEventListener('visibilitychange', onShow);
+    };
+  }, [on, role, branchId, queryClient]);
 
   const ids = useMemo(() => {
     if (role === 'KITCHEN') return kitchen.data?.filter((t) => t.status === 'NEW').map((t) => t.id);

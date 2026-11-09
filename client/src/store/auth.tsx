@@ -11,7 +11,8 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   /** One-tap sign-in with a demo account enabled by the Super Admin. */
   demoLogin: (userId: string) => Promise<void>;
-  logout: () => Promise<void>;
+  /** false when the server could not be reached: the session is still there, nothing was cleared */
+  logout: () => Promise<boolean>;
   refresh: () => Promise<void>;
   selectBranch: (id: string) => void;
 }
@@ -81,9 +82,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         apply(await api.post<MeDTO>('/auth/demo-login', { userId }));
       },
       logout: async () => {
-        await api.post('/auth/logout').catch(() => undefined);
+        // (api already retries a flaky connection.) Clearing the screen while the session cookie
+        // stays would only sign the person back in on the next refresh.
+        const ok = await api
+          .post('/auth/logout')
+          .then(
+            () => true,
+            () => false,
+          );
+        if (!ok) return false;
         queryClient.clear();
         apply(null);
+        return true;
       },
       refresh,
       selectBranch: (id) => {

@@ -304,8 +304,11 @@ html.app-open body {
   flex-direction: column;
   gap: 10px;
   width: min(380px, calc(100vw - 32px));
+  /* Only the cards catch taps – never the gaps between them */
+  pointer-events: none;
 }
 .food-notice {
+  pointer-events: auto;
   position: relative;
   display: flex;
   border: 1px solid var(--color-border);
@@ -509,7 +512,8 @@ html.app-open body {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-panel);
   padding: 8px;
-  z-index: 40;
+  /* Above the food popups (210), which sit in the same corner */
+  z-index: 230;
 }
 .menu-popover .menu-label {
   font-size: var(--font-size-xs);
@@ -1470,6 +1474,13 @@ html.app-open body {
   grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
   gap: 16px;
   margin-top: 18px;
+}
+/* Upright tablets: two dishes per row even beside the table panel */
+@media (max-width: 1100px) and (min-width: 769px) {
+  .food-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
 }
 .food-card {
   background: var(--color-surface);
@@ -3166,6 +3177,7 @@ html.app-open body {
 /* Phone-only elements – hidden on larger screens */
 .tx-cards,
 .nav-toggle,
+.topbar-logo,
 .bottom-nav,
 .nav-backdrop,
 .bill-mobile-bar,
@@ -3206,6 +3218,14 @@ html.app-open body {
   .nav-toggle {
     display: inline-grid;
   }
+  /* Kitchen and Waiter: the logo at the left of the top bar */
+  .topbar-logo {
+    display: block;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
   .search input {
     height: 38px;
     padding-left: 38px;
@@ -3245,11 +3265,12 @@ html.app-open body {
     z-index: 60;
     transform: translateX(-100%);
     transition: transform 0.2s ease-out;
-    box-shadow: var(--shadow-modal);
     padding-top: 18px;
   }
+  /* The shadow only while open: closed, it showed as a grey band down the left edge */
   .sidebar.open {
     transform: none;
+    box-shadow: var(--shadow-modal);
   }
   .nav-backdrop {
     display: block;
@@ -4027,25 +4048,103 @@ html.app-open body {
   border-color: var(--color-secondary);
   background: var(--color-secondary-soft);
 }
-@media (max-width: 1100px) {
+/* Phones only: New / Preparing / Ready buttons pick the one column shown */
+.kds-stage-tabs {
+  display: none;
+}
+/* Upright tablets: all three columns stay side by side, with tighter tickets */
+@media (max-width: 1100px) and (min-width: 769px) {
   .kds-board {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .kds-column-body {
+    padding: 8px;
+    gap: 8px;
+  }
+  .kds-ticket {
+    padding: 10px;
+  }
+  .kds-ticket-head {
+    flex-wrap: wrap;
+  }
+  /* The dish's Ready button becomes just the tick */
+  .kds-dish-ready {
+    padding: 6px 8px;
+  }
+  .kds-dish-ready-text {
+    display: none;
+  }
+  /* The main button gets its own row; the star and print buttons sit together below it */
+  .kds-ticket-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .kds-ticket-actions .btn,
+  .kds-ticket-actions .kds-at-counter {
+    flex: 1 1 100%;
   }
 }
-/* Phones: swipe between the three columns */
 @media (max-width: 768px) {
-  .kds-board {
+  .kds-stage-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .kds-stage-tab {
+    --kds-tone: var(--color-info);
     display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    gap: 10px;
-    margin: 0 calc(-1 * var(--page-padding));
-    padding: 0 var(--page-padding) 8px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 6px 8px;
+    border: 1px solid var(--color-border);
+    border-top: 3px solid var(--kds-tone);
+    border-radius: var(--radius);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .kds-stage-tab.preparing {
+    --kds-tone: var(--status-partial);
+  }
+  .kds-stage-tab.ready {
+    --kds-tone: var(--color-success);
+  }
+  .kds-stage-tab.active {
+    background: var(--color-surface-muted);
+    border-color: var(--kds-tone);
+    box-shadow: inset 0 0 0 1px var(--kds-tone);
+  }
+  .kds-stage-tab .kds-dot {
+    flex-shrink: 0;
+  }
+  .kds-stage-tab .kds-count {
+    margin-left: 2px;
+    min-width: 22px;
+    padding: 0 6px;
+  }
+  .kds-board {
+    display: block;
   }
   .kds-column {
-    flex: 0 0 85%;
-    scroll-snap-align: start;
-    min-height: 360px;
+    display: none;
+    min-height: 0;
+  }
+  .kds-column.shown {
+    display: flex;
+  }
+  /* The buttons above already name the column */
+  .kds-column .kds-column-head {
+    display: none;
+  }
+  .kds-column-body {
+    padding: 8px;
   }
 }
 .kitchen-sent {
@@ -4070,6 +4169,14 @@ html.app-open body {
   text-align: center;
   text-decoration: none;
   font-size: 1rem;
+}
+/* Phones: "Take Order · Ready to Serve · Served" on one line */
+@media (max-width: 768px) {
+  .waiter-tabs .tab {
+    padding: 10px 4px;
+    font-size: 0.875rem;
+    white-space: nowrap;
+  }
 }
 /* Under a table card's status: what each group has in the kitchen */
 .table-card-kitchen {
@@ -4729,12 +4836,15 @@ html.app-open body {
   justify-content: space-between;
   gap: 8px 12px;
 }
+/* KOTs side by side on tablets and laptops (as many columns as fit), one column on phones */
 .kot-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  align-items: start;
+  gap: 12px;
 }
 .kot-card {
+  min-width: 0;
   border: 1px solid var(--color-border);
   border-left: 4px solid var(--color-primary);
   border-radius: var(--radius);

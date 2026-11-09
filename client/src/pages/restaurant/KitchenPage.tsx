@@ -154,7 +154,7 @@ function TicketCard({
                 title={`${i.name} is ready – send it now`}
                 aria-label={`${i.quantity} ${i.name} ready`}
               >
-                <Check size={15} /> Ready
+                <Check size={15} /> <span className="kds-dish-ready-text">Ready</span>
               </button>
             )}
           </li>
@@ -193,6 +193,8 @@ export function KitchenPage() {
   const stations = activeBranch!.kitchenStations;
   const myStation = user?.role === 'KITCHEN' ? stations.find((s) => s.id === user.kitchenStationId) : undefined;
   const [station, setStation] = useState('');
+  // Phones show one column at a time: New, Preparing or Ready (larger screens show all three).
+  const [stage, setStage] = useState<BoardStatus>('NEW');
   const board = useQuery({
     queryKey: boardKey(branchId),
     queryFn: () => api.get<KitchenTicketDTO[]>('/kitchen/tickets'),
@@ -235,11 +237,28 @@ export function KitchenPage() {
       ) : board.isError ? (
         <Empty title="Could not load tickets">{errorMessage(board.error)}</Empty>
       ) : (
+        <>
+        <div className="kds-stage-tabs" role="tablist" aria-label="Column">
+          {KITCHEN_BOARD_STATUSES.map((status) => (
+            <button
+              key={status}
+              type="button"
+              role="tab"
+              aria-selected={stage === status}
+              className={cx('kds-stage-tab', COLUMN[status].tone, stage === status && 'active')}
+              onClick={() => setStage(status)}
+            >
+              <span className="kds-dot" />
+              {COLUMN[status].title}
+              <span className="kds-count">{tickets.filter((t) => t.status === status).length}</span>
+            </button>
+          ))}
+        </div>
         <div className="kds-board">
           {KITCHEN_BOARD_STATUSES.map((status) => {
             const list = tickets.filter((t) => t.status === status);
             return (
-              <section key={status} className={cx('kds-column', COLUMN[status].tone)} aria-label={COLUMN[status].title}>
+              <section key={status} className={cx('kds-column', COLUMN[status].tone, stage === status && 'shown')} aria-label={COLUMN[status].title}>
                 <h2 className="kds-column-head">
                   <span className="kds-dot" />
                   {COLUMN[status].title}
@@ -256,6 +275,7 @@ export function KitchenPage() {
             );
           })}
         </div>
+        </>
       )}
     </div>
   );

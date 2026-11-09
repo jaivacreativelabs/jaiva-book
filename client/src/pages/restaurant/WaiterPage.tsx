@@ -87,7 +87,8 @@ export function WaiterPage() {
     queryKey: boardKey(branchId),
     queryFn: () => api.get<KitchenTicketDTO[]>('/waiter/tickets'),
     enabled: activeBranch!.kitchenDisplay,
-    refetchInterval: 4_000,
+    refetchInterval: 3_000,
+    staleTime: 0,
     refetchIntervalInBackground: true,
   });
 

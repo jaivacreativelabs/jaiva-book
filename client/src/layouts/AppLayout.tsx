@@ -36,6 +36,7 @@ import { ChangePasswordModal } from '../pages/auth/ChangePasswordModal';
 import { useAuth } from '../store/auth';
 import { APP_NAME, placeName } from '@rb/shared';
 import { getSyncSummary, subscribeSyncSummary } from '../store/draftSync';
+import { useToast } from '../store/toast';
 import { useTopbar } from '../store/topbar';
 import { cx } from '../utils/format';
 import { ROLE_LABEL } from '../utils/roles';
@@ -99,13 +100,16 @@ function UserMenu() {
   const { user, branches, activeBranch, selectBranch, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const toast = useToast();
   const ref = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const close = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    // pointerdown: iPad Safari sends no mousedown for most taps, so the menu never closed there.
+    const close = (e: PointerEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
   }, []);
 
   if (!user) return null;
@@ -166,12 +170,17 @@ function UserMenu() {
           <button
             className="menu-item"
             role="menuitem"
+            disabled={signingOut}
             onClick={async () => {
-              await logout();
-              navigate('/login');
+              setSigningOut(true);
+              const done = await logout();
+              setSigningOut(false);
+              if (!done) return toast.error('Could not sign out – check the internet connection and try again.');
+              setOpen(false);
+              navigate('/login', { replace: true });
             }}
           >
-            <LogOut size={18} /> Sign out
+            <LogOut size={18} /> {signingOut ? 'Signing out…' : 'Sign out'}
           </button>
         </div>
       )}
@@ -207,6 +216,7 @@ export function AppLayout() {
   return (
     <div className={cx('app', bottomNav && 'has-bottom-nav')}>
       <div className="brand">
+        <img src="/lemon-tree-icon.png" alt="Lemon Tree" />
         <div style={{ minWidth: 0 }}>
           <div className="brand-name">{APP_NAME}</div>
           <div className="brand-sub">{isSuper ? 'Super Admin Panel' : isKitchen ? 'Kitchen Display' : isWaiter ? 'Waiter' : 'Billing & POS'}</div>
@@ -218,6 +228,8 @@ export function AppLayout() {
             <MenuIcon />
           </button>
         )}
+        {/* Phones: Kitchen and Waiter have no sidebar there, so the logo sits in the top bar */}
+        {(isKitchen || isWaiter) && <img className="topbar-logo" src="/lemon-tree-icon.png" alt="Lemon Tree" />}
         {placeholder ? (
           <div className="search">
             <Search />

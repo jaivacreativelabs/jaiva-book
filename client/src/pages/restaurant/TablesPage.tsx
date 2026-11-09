@@ -880,7 +880,7 @@ export function TablesPage() {
   // Waiter › Take Order is this page too, without billing and table management.
   const isWaiter = user?.role === 'WAITER';
   // Waiters watch the kitchen's Preparing / Ready on the cards, so refresh more often.
-  const tables = useTables(branchId, isWaiter ? 5_000 : undefined);
+  const tables = useTables(branchId, isWaiter ? 3_000 : undefined);
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const selectedId = params.get('table');
@@ -956,11 +956,24 @@ export function TablesPage() {
           title="Tables"
           subtitle={isWaiter ? 'Tap a table to take its order' : 'View and manage restaurant tables'}
           actions={
-            !isWaiter && (
-              <button className="btn btn-primary btn-lg" onClick={() => setPanel({ panel: 'add', table: null })}>
-                <CirclePlus /> Add Table
-              </button>
-            )
+            <>
+              {/* A table is open on the right: its KOTs, one button per group */}
+              {activeBranch?.kitchenDisplay &&
+                selected?.groups.map((g) => (
+                  <KotButton
+                    key={g.draftId}
+                    draftId={g.draftId}
+                    branchId={branchId}
+                    title={`Table ${selected.label} · ${g.groupName}`}
+                    label={selected.groups.length > 1 ? `KOT · ${g.groupName}` : 'KOT Details'}
+                  />
+                ))}
+              {!isWaiter && (
+                <button className="btn btn-primary btn-lg" onClick={() => setPanel({ panel: 'add', table: null })}>
+                  <CirclePlus /> Add Table
+                </button>
+              )}
+            </>
           }
         />
         <TableLegend />

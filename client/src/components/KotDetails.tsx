@@ -3,10 +3,10 @@
  * kitchen ticket of the order, oldest first – what went to the kitchen when, to which counter, by
  * whom, and where it is now (Sent → Served).
  */
-import { isParcel, type KitchenStatus, type KitchenTicketDTO } from '@rb/shared';
+import { isParcel, type DraftDTO, type KitchenStatus, type KitchenTicketDTO } from '@rb/shared';
 import { useQuery } from '@tanstack/react-query';
 import { ChefHat, Star } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { api } from '../services/api';
 import { cx, formatMoney, formatTime } from '../utils/format';
 import { Modal } from './ui';
@@ -63,9 +63,31 @@ function KotCard({ ticket, index, prices }: { ticket: KitchenTicketDTO; index: n
   );
 }
 
-/** `prices`: the bill's current price per dish, to show what each KOT comes to. */
-export function KotButton({ draftId, branchId, title, prices }: { draftId: string; branchId: string; title: string; prices: Map<string, number> }) {
+/**
+ * `prices`: the bill's current price per dish, to show what each KOT comes to. Left out (the
+ * Tables page, before the order is opened), the bill is loaded for them when the popup opens.
+ * `label`: the button's words, e.g. "KOT · Group 2" when a table has several groups.
+ */
+export function KotButton({
+  draftId,
+  branchId,
+  title,
+  prices: given,
+  label = 'KOT Details',
+}: {
+  draftId: string;
+  branchId: string;
+  title: string;
+  prices?: Map<string, number>;
+  label?: string;
+}) {
   const [open, setOpen] = useState(false);
+  const bill = useQuery({
+    queryKey: ['bill-prices', draftId],
+    queryFn: () => api.get<DraftDTO>(`/bills/${draftId}`, { branchId }),
+    enabled: open && !given,
+  });
+  const prices = useMemo(() => given ?? new Map((bill.data?.items ?? []).map((i) => [i.menuItemId, i.unitPrice])), [given, bill.data]);
   const kots = useQuery({
     queryKey: kotKey(draftId),
     queryFn: () => api.get<KitchenTicketDTO[]>(`/bills/${draftId}/kitchen`, { branchId }),
@@ -75,10 +97,12 @@ export function KotButton({ draftId, branchId, title, prices }: { draftId: strin
   return (
     <>
       <button type="button" className="btn btn-outline-primary btn-sm" onClick={() => setOpen(true)}>
-        <ChefHat size={16} /> KOT Details{tickets.length > 0 && ` (${tickets.length})`}
+        <ChefHat size={16} /> {label}
+        {tickets.length > 0 && ` (${tickets.length})`}
       </button>
       {open && (
-        <Modal title={`KOTs · ${title}`} onClose={() => setOpen(false)} width={420}>
+        // Tablets and laptops: KOTs side by side (up to three across); phones: one column.
+        <Modal title={`KOTs · ${title}`} onClose={() => setOpen(false)} width={tickets.length >= 3 ? 1080 : tickets.length === 2 ? 740 : 420}>
           {kots.isLoading ? (
             <p className="muted">Loading KOTs…</p>
           ) : kots.isError ? (
