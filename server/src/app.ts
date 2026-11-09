@@ -21,6 +21,8 @@ export function createApp(): express.Express {
           scriptSrc: ["'self'"],
           styleSrc: ["'self'", "'unsafe-inline'"],
           imgSrc: ["'self'", 'data:', 'blob:'],
+          // The food-alert sounds are clips made in the browser (blob: URLs).
+          mediaSrc: ["'self'", 'blob:'],
           fontSrc: ["'self'", 'data:'],
           connectSrc: ["'self'"],
           objectSrc: ["'none'"],

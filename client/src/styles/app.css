@@ -463,24 +463,6 @@ html.app-open body {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
-/* Sound is wanted but the browser waits for a first tap: a pulsing amber switch */
-.sound-switch.waiting {
-  color: var(--color-warning);
-}
-.sound-switch.waiting .sound-track {
-  background: var(--color-warning);
-  animation: sound-pulse 1.6s ease-in-out infinite;
-}
-@keyframes sound-pulse {
-  50% {
-    box-shadow: 0 0 0 5px rgb(176 125 0 / 0.2);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .sound-switch.waiting .sound-track {
-    animation: none;
-  }
-}
 .user-menu {
   position: relative;
   margin-left: auto;

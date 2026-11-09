@@ -9,13 +9,13 @@
  * that. Browsers only allow sound after the person has touched the page once; `blocked` is true
  * until then.
  */
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 
-const STORAGE_KEY = "jaiva:kitchen-sound";
+const STORAGE_KEY = 'jaiva:kitchen-sound';
 
 function readSetting(): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEY) !== "off";
+    return localStorage.getItem(STORAGE_KEY) !== 'off';
   } catch {
     return true;
   }
@@ -23,7 +23,7 @@ function readSetting(): boolean {
 
 function writeSetting(on: boolean) {
   try {
-    localStorage.setItem(STORAGE_KEY, on ? "on" : "off");
+    localStorage.setItem(STORAGE_KEY, on ? 'on' : 'off');
   } catch {
     // Private window / blocked storage: the setting lasts until the page is closed.
   }
@@ -50,14 +50,11 @@ export function markOwnAction(ticketId: string) {
 /** This screen just marked food Ready (these tickets): a short "done" sound, if sound is on. */
 export function playReadyDone(ticketIds: string[]) {
   ticketIds.forEach((id) => ownReady.add(id));
-  if (state.enabled) playChime("ready");
+  if (state.enabled) playChime('ready');
 }
 
 function set(next: Partial<typeof state>) {
-  if (
-    Object.entries(next).every(([k, v]) => state[k as keyof typeof state] === v)
-  )
-    return;
+  if (Object.entries(next).every(([k, v]) => state[k as keyof typeof state] === v)) return;
   state = { ...state, ...next };
   listeners.forEach((l) => l());
 }
@@ -68,16 +65,13 @@ const subscribe = (l: () => void) => {
 const snapshot = () => state;
 
 // ---- The sounds: short WAV clips made here once, played like any audio file ----
-type Sound = "arrived" | "gone" | "ready";
-const ALL_SOUNDS: Sound[] = ["arrived", "gone", "ready"];
+type Sound = 'arrived' | 'gone' | 'ready';
+const ALL_SOUNDS: Sound[] = ['arrived', 'gone', 'ready'];
 /**
  * Notes (Hz) and when each starts (s). Arrived: two rising tones, twice. Gone: one falling pair.
  * Ready: three quick rising notes – the kitchen's own "done" when it marks food Ready.
  */
-const SOUNDS: Record<
-  Sound,
-  { notes: number[]; at: (i: number) => number; volume: number }
-> = {
+const SOUNDS: Record<Sound, { notes: number[]; at: (i: number) => number; volume: number }> = {
   arrived: {
     notes: [880, 1320, 880, 1320],
     at: (i) => i * 0.18 + (i >= 2 ? 0.25 : 0),
@@ -103,11 +97,10 @@ function wavUrl(sound: Sound): string {
   });
   const buffer = new ArrayBuffer(44 + length * 2);
   const v = new DataView(buffer);
-  const text = (o: number, str: string) =>
-    [...str].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
-  text(0, "RIFF");
+  const text = (o: number, str: string) => [...str].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  text(0, 'RIFF');
   v.setUint32(4, 36 + length * 2, true);
-  text(8, "WAVEfmt ");
+  text(8, 'WAVEfmt ');
   v.setUint32(16, 16, true);
   v.setUint16(20, 1, true); // PCM
   v.setUint16(22, 1, true); // mono
@@ -115,12 +108,10 @@ function wavUrl(sound: Sound): string {
   v.setUint32(28, rate * 2, true);
   v.setUint16(32, 2, true);
   v.setUint16(34, 16, true);
-  text(36, "data");
+  text(36, 'data');
   v.setUint32(40, length * 2, true);
-  samples.forEach((x, i) =>
-    v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, x)) * 0x7fff, true),
-  );
-  return URL.createObjectURL(new Blob([buffer], { type: "audio/wav" }));
+  samples.forEach((x, i) => v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, x)) * 0x7fff, true));
+  return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
 }
 
 type Player = {
@@ -133,7 +124,7 @@ function player(sound: Sound): Player {
   let p = players.get(sound);
   if (!p) {
     const el = new Audio(wavUrl(sound));
-    el.preload = "auto";
+    el.preload = 'auto';
     p = { el, priming: null, primed: false };
     players.set(sound, p);
   }
@@ -171,35 +162,30 @@ function onTap() {
   }
 }
 
-if (typeof window !== "undefined") {
+if (typeof window !== 'undefined') {
   // Phones count a tap only when the finger lifts (touchend / pointerup / click), mice on press.
   // A tap on the Sound switch is left to the switch itself (see FoodAlerts).
-  for (const type of [
-    "pointerdown",
-    "pointerup",
-    "touchend",
-    "click",
-    "keydown",
-  ]) {
+  for (const type of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown']) {
     window.addEventListener(
       type,
       (e) => {
-        if (!(e.target instanceof Element && e.target.closest(".sound-switch")))
-          onTap();
+        if (!(e.target instanceof Element && e.target.closest('.sound-switch'))) onTap();
       },
       { capture: true, passive: true },
     );
   }
 }
 
-function playChime(sound: Sound = "arrived") {
+function playChime(sound: Sound = 'arrived') {
   if (state.blocked) return;
   const p = player(sound);
   const play = () => {
     p.el.muted = false;
     p.el.currentTime = 0;
-    // Refused (the browser took sound away again): ask for a tap.
-    return p.el.play().catch(() => set({ blocked: true }));
+    // Refused because the page needs a tap again: wait for one. Other errors do not stop later sounds.
+    return p.el.play().catch((e: unknown) => {
+      if (e instanceof DOMException && e.name === 'NotAllowedError') set({ blocked: true });
+    });
   };
   void (p.priming ? p.priming.then(play) : play());
 }
@@ -211,13 +197,8 @@ function playChime(sound: Sound = "arrived") {
  * someone else – plays the softer sound. `onArrive` gets the ids that just arrived (for a popup),
  * whether or not the sound is on.
  */
-export function useOrderChime(
-  ids: string[] | undefined,
-  key: string,
-  ready?: string[],
-  onArrive?: (ids: string[]) => void,
-) {
-  const { enabled, blocked } = useSyncExternalStore(subscribe, snapshot);
+export function useOrderChime(ids: string[] | undefined, key: string, ready?: string[], onArrive?: (ids: string[]) => void) {
+  const { enabled } = useSyncExternalStore(subscribe, snapshot);
   const arrive = useRef(onArrive);
   useEffect(() => {
     arrive.current = onArrive;
@@ -248,25 +229,18 @@ export function useOrderChime(
     readyByKey.set(key, new Set(ready));
     if (!before) return;
     const now = new Set(ready);
-    const gone = [...before].filter(
-      (id) => !now.has(id) && !ownActions.has(id),
-    );
-    if (gone.length && state.enabled) playChime("gone");
+    const gone = [...before].filter((id) => !now.has(id) && !ownActions.has(id));
+    if (gone.length && state.enabled) playChime('gone');
   }, [ready, key]);
 
-  /**
-   * The Sound switch was tapped. Sound wanted but not yet allowed: this tap allows it (and plays
-   * the chime once, so staff know what to listen for). Otherwise it turns the sound on or off.
-   */
+  /** The Sound switch was tapped: on ↔ off. Turning it on plays the chime once. */
   const press = useCallback(() => {
-    const wasBlocked = state.blocked;
     onTap();
-    if (state.enabled && wasBlocked) return playChime();
     const next = !state.enabled;
     writeSetting(next);
     set({ enabled: next });
     if (next) playChime();
   }, []);
 
-  return { enabled, blocked, press };
+  return { enabled, press };
 }
