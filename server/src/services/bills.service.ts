@@ -44,7 +44,7 @@ import { resolvePayments } from '../utils/payments.js';
 import { toObjectId } from '../utils/validate.js';
 import { audit } from './audit.service.js';
 import { cancelUnstarted, editUnstarted, linkBill, sendToKitchen, unstartedQty, unstartedTickets } from './kitchen.service.js';
-import { seatsInUse } from './tables.service.js';
+import { claimTable, releaseTableIfFree, seatsInUse } from './tables.service.js';
 
 type DraftLean = Draft & { _id: Types.ObjectId; updatedAt?: Date };
 type TableLean = Table & { _id: Types.ObjectId };
@@ -263,6 +263,7 @@ export async function createTableGroup(
       { session },
     );
     if (claimed.modifiedCount !== 1) throw conflict('The table was just updated. Please try again.', 'TABLE_BUSY');
+    await claimTable(actor, tableId, session); // a waiter seating guests looks after the table
     const [created] = await DraftModel.create(
       [
         {
@@ -307,7 +308,10 @@ export async function updateDraft(actor: AuthUser, scope: BranchScope, id: strin
   assertWaiterTable(actor, draft);
   assertActive(draft);
   if (draft.version !== input.version) throw await staleVersion(draft);
-  if (actor.role === 'WAITER') assertWaiterEdit(draft, input);
+  if (actor.role === 'WAITER') {
+    assertWaiterEdit(draft, input);
+    await claimTable(actor, draft.tableId); // taking the order makes the table theirs; another waiter's is refused
+  }
 
   const previousQty = new Map(draft.items.map((i) => [String(i.menuItemId), i.quantity]));
   // A dish sent without a note keeps the one it has (screens that do not show notes).
@@ -406,6 +410,7 @@ export async function deleteDraft(actor: AuthUser, scope: BranchScope, id: strin
   ).lean<DraftLean>();
   if (!deleted) throw await staleVersion(await findDraft(scope, id));
   await cancelUnstarted(draft._id);
+  await releaseTableIfFree(draft.tableId);
   const label = await tableLabelOf(draft);
   await audit(actor, {
     action: 'DRAFT_DELETED',
@@ -582,6 +587,9 @@ export async function finalizeDraft(
       await linkBill(draftId, billNumber, orderType)
         .then(() => sendToKitchen(actor, scope, draftId))
         .catch((err) => console.error('[kitchen] could not send ticket:', err));
+      // The last group billed: the table is free for any waiter again.
+      const { tableId } = result.transaction;
+      if (tableId) await releaseTableIfFree(new Types.ObjectId(tableId)).catch((err) => console.error('[tables] could not free the waiter:', err));
     }
     return result;
   } catch (err) {

@@ -162,6 +162,8 @@ export function createApiRouter(): Router {
   tablesRouter.get('/', ops.listTables);
   tablesRouter.post('/', ops.createTable);
   tablesRouter.patch('/:id', ops.updateTable);
+  tablesRouter.get('/waiters', ops.listWaiters);
+  tablesRouter.put('/:id/waiter', ops.setTableWaiter);
   tablesRouter.delete('/:id', ops.deleteTable);
   api.use('/tables', tablesRouter);
 

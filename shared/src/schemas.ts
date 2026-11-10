@@ -242,6 +242,8 @@ export const tableCreateSchema = z.strictObject({
   status: z.enum(TABLE_STATUSES).optional(),
 });
 export const tableUpdateSchema = tableCreateSchema.partial();
+/** The cashier gives a table to a waiter (null: no waiter – the first waiter to take its order gets it). */
+export const tableWaiterSchema = z.strictObject({ waiterId: objectIdSchema.nullable() });
 
 // ---------- Bills ----------
 export const discountSchema = z.discriminatedUnion('type', [

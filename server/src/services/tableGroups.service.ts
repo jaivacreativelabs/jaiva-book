@@ -18,6 +18,7 @@ import { toDraftDTO } from '../utils/serialize.js';
 import { toObjectId } from '../utils/validate.js';
 import { audit } from './audit.service.js';
 import { assertActive, findDraft, nextGroupName, priceLines, staleVersion, tableLabelOf, totalsFor } from './bills.service.js';
+import { releaseTableIfFree } from './tables.service.js';
 
 type DraftLean = Draft & { _id: Types.ObjectId };
 type TableLean = Table & { _id: Types.ObjectId };
@@ -64,6 +65,13 @@ const stripCategory = <T extends { categoryName: string }>({ categoryName: _c, .
 export async function moveGroup(actor: AuthUser, scope: BranchScope, id: string, input: MoveGroupInput): Promise<DraftDTO> {
   assertAdmin(actor);
   const targetId = toObjectId(input.tableId, 'table');
+  const fromTable = (await findDraft(scope, id)).tableId;
+  const moved = await moveGroupNow(actor, scope, id, input, targetId);
+  await releaseTableIfFree(fromTable); // the table it left may have no guests now
+  return moved;
+}
+
+async function moveGroupNow(actor: AuthUser, scope: BranchScope, id: string, input: MoveGroupInput, targetId: Types.ObjectId): Promise<DraftDTO> {
   return runInTransaction(async (session) => {
     const draft = await findDraft(scope, id, session);
     assertActive(draft);
@@ -117,6 +125,13 @@ export async function moveGroup(actor: AuthUser, scope: BranchScope, id: string,
 
 export async function mergeGroup(actor: AuthUser, scope: BranchScope, id: string, input: MergeGroupInput): Promise<DraftDTO> {
   assertAdmin(actor);
+  const fromTable = (await findDraft(scope, id)).tableId;
+  const merged = await mergeGroupNow(actor, scope, id, input);
+  await releaseTableIfFree(fromTable); // merged from another table: that table may have no guests now
+  return merged;
+}
+
+async function mergeGroupNow(actor: AuthUser, scope: BranchScope, id: string, input: MergeGroupInput): Promise<DraftDTO> {
   return runInTransaction(async (session) => {
     const source = await findDraft(scope, id, session);
     assertActive(source);

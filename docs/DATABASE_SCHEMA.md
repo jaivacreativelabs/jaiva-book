@@ -108,7 +108,8 @@ applied (branch photo replaces the main photo). Indexes: `{ restaurantId: 1, bra
 | floor | string | e.g. "Ground Floor" |
 | status | `AVAILABLE` \| `RESERVED` | manual status only |
 | isActive | boolean | false = removed from the floor plan |
-| version | int | bumped when seats are claimed, serialises group creation |
+| waiterId / waiterName | ObjectId \| null / string | the waiter looking after the guests now: set by the cashier, or by the first waiter to seat / order / send a KOT there. Other waiters get 403 `TABLE_TAKEN`. Cleared when the last group is billed, deleted, moved or merged away, and when the waiter is deleted, deactivated or moved |
+| version | int | bumped when seats are claimed and when the cashier sets the waiter; serialises group creation |
 
 Occupancy is **derived**, not stored: `seatsUsed = Σ guestCount` of the table's `ACTIVE`
 drafts. Display state: `RESERVED` if reserved, else `FULL` (seatsUsed ≥ seats), `PARTIAL`

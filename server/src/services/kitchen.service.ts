@@ -20,6 +20,7 @@ import { AppError, conflict, forbidden, notFound } from '../utils/errors.js';
 import { assertAdmin } from '../utils/roles.js';
 import { effectiveItem } from '../utils/serialize.js';
 import { toObjectId } from '../utils/validate.js';
+import { claimTable } from './tables.service.js';
 
 type TicketLean = KitchenTicket & { _id: Types.ObjectId; createdAt: Date };
 type DraftLean = Draft & { _id: Types.ObjectId };
@@ -123,6 +124,7 @@ export async function sendToKitchen(
   const draft = await DraftModel.findOne({ _id: toObjectId(String(draftId), 'bill'), branchId: scope.branch._id, status: { $ne: 'DELETED' } }).lean<DraftLean>();
   if (!draft) throw notFound('Bill');
   if (actor.role === 'WAITER' && draft.type !== 'TABLE') throw forbidden('Waiters can only take table orders');
+  await claimTable(actor, draft.tableId); // another waiter's table is refused
   const items = unsentItems(draft);
   if (!items.length) return [];
   const groups = await byStation(scope, items);

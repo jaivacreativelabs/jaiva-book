@@ -291,6 +291,17 @@ export interface TableDTO {
   seatsUsed: number;
   occupancy: TableOccupancy;
   groups: TableGroupSummaryDTO[];
+  /**
+   * The waiter looking after the table's guests: given by the cashier, or the first waiter who took
+   * an order there. Other waiters cannot take its orders. Cleared when the last group leaves.
+   */
+  waiter: { id: string; name: string } | null;
+}
+
+/** A waiter the cashier can give a table to. */
+export interface WaiterOptionDTO {
+  id: string;
+  name: string;
 }
 
 export interface TablesResponseDTO {

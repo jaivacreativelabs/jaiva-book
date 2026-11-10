@@ -1,4 +1,4 @@
-import type { Types } from 'mongoose';
+import type { ClientSession, Types } from 'mongoose';
 import {
   KITCHEN_BOARD_STATUSES,
   kitchenPending,
@@ -7,11 +7,12 @@ import {
   type TableDTO,
   type TableOccupancy,
   type TablesResponseDTO,
+  type WaiterOptionDTO,
 } from '@rb/shared';
 import type { AuthUser } from '../middleware/auth.js';
 import type { BranchScope } from '../middleware/scope.js';
-import { DraftModel, KitchenTicketModel, TableModel, type Draft, type Table } from '../models/index.js';
-import { conflict, notFound } from '../utils/errors.js';
+import { DraftModel, KitchenTicketModel, TableModel, UserModel, type Draft, type Table } from '../models/index.js';
+import { AppError, conflict, notFound } from '../utils/errors.js';
 import { assertAdmin } from '../utils/roles.js';
 import { nameKey, toObjectId } from '../utils/validate.js';
 import { audit } from './audit.service.js';
@@ -91,7 +92,73 @@ export function toTableDTO(t: TableLean, drafts: DraftLean[], kitchen?: Kitchen)
     seatsUsed,
     occupancy: occupancyOf(t, seatsUsed),
     groups,
+    waiter: t.waiterId ? { id: String(t.waiterId), name: t.waiterName ?? '' } : null,
   };
+}
+
+// ---------------- The table's waiter ----------------
+
+/**
+ * A waiter taking an order at a table makes it theirs, when nobody has it yet. A table that is
+ * another waiter's is refused: they see it greyed out with that waiter's name.
+ */
+export async function claimTable(actor: Pick<AuthUser, '_id' | 'name' | 'role'>, tableId: Types.ObjectId | null | undefined, session?: ClientSession | null) {
+  if (actor.role !== 'WAITER' || !tableId) return;
+  const claimed = await TableModel.updateOne(
+    { _id: tableId, waiterId: { $in: [null, actor._id] } }, // null also matches tables from before waiters
+    { $set: { waiterId: actor._id, waiterName: actor.name } },
+    { session: session ?? undefined },
+  );
+  if (claimed.matchedCount === 1) return;
+  const t = await TableModel.findById(tableId).session(session ?? null).select('label waiterName').lean<{ label: string; waiterName: string }>();
+  if (t) throw new AppError(403, 'TABLE_TAKEN', `${t.label} is ${t.waiterName || 'another waiter'}’s table`);
+}
+
+/**
+ * Once the last group has left (billed, deleted, moved or merged away), the table is free for any
+ * waiter again. `version` is bumped by seating a group and by the cashier's choice, so neither is
+ * undone by a release running at the same moment.
+ */
+export async function releaseTableIfFree(tableId: Types.ObjectId | null | undefined) {
+  if (!tableId) return;
+  const t = await TableModel.findById(tableId).select('version waiterId').lean<{ version: number; waiterId: Types.ObjectId | null }>();
+  if (!t?.waiterId) return;
+  if (await DraftModel.exists({ tableId, status: 'ACTIVE', type: 'TABLE' })) return;
+  await TableModel.updateOne({ _id: tableId, version: t.version }, { $set: { waiterId: null, waiterName: '' } });
+}
+
+/** The branch's active waiters, for the cashier's "Waiter" button. */
+export async function listWaiters(actor: AuthUser, scope: BranchScope): Promise<WaiterOptionDTO[]> {
+  assertAdmin(actor);
+  const users = await UserModel.find({ role: 'WAITER', status: 'ACTIVE', branchIds: scope.branch._id }).select('name').sort({ name: 1 }).lean<{ _id: Types.ObjectId; name: string }[]>();
+  return users.map((u) => ({ id: String(u._id), name: u.name }));
+}
+
+/** The cashier gives the table to a waiter, moves it to another, or frees it (null). */
+export async function setTableWaiter(actor: AuthUser, scope: BranchScope, id: string, waiterId: string | null): Promise<TableDTO> {
+  assertAdmin(actor);
+  const table = await getTableOr404(scope, id);
+  let waiter: { _id: Types.ObjectId; name: string } | null = null;
+  if (waiterId) {
+    waiter = await UserModel.findOne({ _id: toObjectId(waiterId, 'waiter'), role: 'WAITER', status: 'ACTIVE', branchIds: scope.branch._id })
+      .select('name')
+      .lean<{ _id: Types.ObjectId; name: string }>();
+    if (!waiter) throw notFound('Waiter');
+  }
+  const before = table.waiterName;
+  table.waiterId = waiter?._id ?? null;
+  table.waiterName = waiter?.name ?? '';
+  table.version += 1;
+  await table.save();
+  await audit(actor, {
+    action: 'TABLE_WAITER_SET',
+    entityType: 'Table',
+    entityId: table._id,
+    restaurantId: scope.restaurant._id,
+    branchId: scope.branch._id,
+    summary: waiter ? `Gave table ${table.label} to ${waiter.name}${before ? ` (was ${before})` : ''}` : `Took ${before || 'the waiter'} off table ${table.label}`,
+  });
+  return getTableDTO(scope, table._id);
 }
 
 const floorOrder = (a: string, b: string) =>

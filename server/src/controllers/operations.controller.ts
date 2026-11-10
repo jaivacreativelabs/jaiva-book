@@ -17,6 +17,7 @@ import {
   splitGroupSchema,
   tableCreateSchema,
   tableUpdateSchema,
+  tableWaiterSchema,
   transactionEditSchema,
   transactionQuerySchema,
   transactionStatusChangeSchema,
@@ -46,6 +47,13 @@ export const createTable = async (req: Request, res: Response) => {
 };
 export const updateTable = async (req: Request, res: Response) => {
   res.json({ data: await tables.updateTable(currentUser(req), getBranchScope(req), id(req), parse(tableUpdateSchema, req.body)) });
+};
+export const listWaiters = async (req: Request, res: Response) => {
+  res.json({ data: await tables.listWaiters(currentUser(req), getBranchScope(req)) });
+};
+export const setTableWaiter = async (req: Request, res: Response) => {
+  const { waiterId } = parse(tableWaiterSchema, req.body);
+  res.json({ data: await tables.setTableWaiter(currentUser(req), getBranchScope(req), id(req), waiterId) });
 };
 export const deleteTable = async (req: Request, res: Response) => {
   await tables.deactivateTable(currentUser(req), getBranchScope(req), id(req));

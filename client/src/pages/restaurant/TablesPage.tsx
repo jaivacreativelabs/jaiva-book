@@ -15,9 +15,29 @@ import {
   type TablesResponseDTO,
   type TableStatus,
   type TransactionDTO,
+  type WaiterOptionDTO,
 } from '@rb/shared';
-import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRightLeft, ChevronUp, CirclePlus, ConciergeBell, FileText, Merge, Minus, Pencil, Plus, Split, Trash2, Users, Utensils } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  ArrowLeft,
+  ArrowRightLeft,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  CirclePlus,
+  ConciergeBell,
+  FileText,
+  Merge,
+  Minus,
+  Pencil,
+  Plus,
+  Split,
+  Trash2,
+  UserRound,
+  Users,
+  Utensils,
+  X,
+} from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { TableIcon } from '../../components/badges';
@@ -25,7 +45,7 @@ import { DiscountEditor } from '../../components/DiscountEditor';
 import { FoodImage } from '../../components/FoodImage';
 import { PaymentModal, printReceipt } from '../../components/PaymentButtons';
 import { TableIllustration } from '../../components/TableIllustration';
-import { CancelButton, ConfirmButton, ConfirmDialog, Empty, Field, Loading, PageHeader, SidePanel, Spinner, Stepper } from '../../components/ui';
+import { CancelButton, ConfirmButton, ConfirmDialog, Empty, Field, Loading, Modal, PageHeader, SidePanel, Spinner, Stepper } from '../../components/ui';
 import { api, ApiError, apiSync, errorMessage } from '../../services/api';
 import { tableKeys, useTables } from '../../services/queries';
 import { useAuth } from '../../store/auth';
@@ -68,19 +88,118 @@ function pillText(t: TableDTO) {
   }
 }
 
+/** For a waiter: the table is another waiter's (greyed out, cannot be opened). */
+export function takenFrom(table: TableDTO, user: { id: string; role: string } | null | undefined): string | null {
+  return user?.role === 'WAITER' && table.waiter && table.waiter.id !== user.id ? table.waiter.name : null;
+}
+
 /** A table on the floor plan; `children` adds a line under the status (the waiter's kitchen badges). */
 export function TableCard({ table, selected, onClick, children }: { table: TableDTO; selected: boolean; onClick: () => void; children?: ReactNode }) {
+  const { user } = useAuth();
   // Occupied tables show what their groups' bills come to so far.
   const amount = table.groups.reduce((a, g) => a + g.grandTotal, 0);
+  const taken = takenFrom(table, user);
+  const mine = user?.role === 'WAITER' && table.waiter?.id === user.id;
   return (
-    <button className={cx('table-card', table.occupancy, selected && 'selected')} onClick={onClick} aria-pressed={selected}>
+    <button
+      className={cx('table-card', table.occupancy, selected && 'selected', taken && 'taken')}
+      onClick={onClick}
+      aria-pressed={selected}
+      disabled={Boolean(taken)}
+      title={taken ? `${table.label} is ${taken}’s table` : undefined}
+    >
       {table.groups.length > 0 && <span className="table-amount num">{formatMoney(amount)}</span>}
       <span className="table-label">{table.label}</span>
       <span className="table-seats">{table.seats} Seats</span>
       <TableIllustration shape={table.shape} seats={table.seats} tone={table.occupancy} />
       <span className={cx('status-pill', table.occupancy)}>{pillText(table)}</span>
-      {children}
+      {table.waiter && (
+        <span className={cx('table-waiter', mine && 'mine')}>
+          <UserRound size={13} /> <span>{mine ? 'Your table' : table.waiter.name}</span>
+        </span>
+      )}
+      {!taken && children}
     </button>
+  );
+}
+
+/**
+ * The table's waiter beside its title. The cashier taps it to give the table to a waiter, move it
+ * to another or take the waiter off; a waiter just sees whose table it is.
+ */
+function TableWaiterButton({ table }: { table: TableDTO }) {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+  if (user?.role === 'WAITER') {
+    return table.waiter ? (
+      <span className="waiter-chip">
+        <UserRound size={15} /> <span>{table.waiter.id === user.id ? 'Your table' : table.waiter.name}</span>
+      </span>
+    ) : null;
+  }
+  return (
+    <>
+      <button type="button" className={cx('waiter-chip as-button', !table.waiter && 'empty')} onClick={() => setOpen(true)} title="Choose the waiter for this table">
+        <UserRound size={15} /> <span>{table.waiter?.name ?? 'Assign waiter'}</span> <ChevronDown size={14} />
+      </button>
+      {open && <WaiterPicker table={table} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+function WaiterPicker({ table, onClose }: { table: TableDTO; onClose: () => void }) {
+  const { activeBranch } = useAuth();
+  const branchId = activeBranch!.id;
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const waiters = useQuery({ queryKey: ['waiters', branchId], queryFn: () => api.get<WaiterOptionDTO[]>('/tables/waiters') });
+  const [busy, setBusy] = useState<string | null>(null);
+  const choose = async (waiter: WaiterOptionDTO | null) => {
+    setBusy(waiter?.id ?? 'none');
+    try {
+      await api.put(`/tables/${table.id}/waiter`, { waiterId: waiter?.id ?? null });
+      await queryClient.invalidateQueries({ queryKey: tableKeys.list(branchId) });
+      toast.success(waiter ? `${table.label} is ${waiter.name}’s table` : `${table.label} has no waiter now`);
+      onClose();
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Modal title={`Waiter for ${table.label}`} onClose={onClose} width={440}>
+      <p className="muted" style={{ margin: '-8px 0 0' }}>
+        Only this waiter can take {table.label}’s orders. With no waiter, the first waiter to take an order gets the table.
+      </p>
+      {waiters.isLoading ? (
+        <Loading />
+      ) : waiters.isError ? (
+        <div className="alert alert-danger">{errorMessage(waiters.error)}</div>
+      ) : !waiters.data?.length ? (
+        <Empty icon={<UserRound />} title="No waiters yet">
+          The Super Admin adds waiter logins under Employees.
+        </Empty>
+      ) : (
+        <div className="waiter-options" role="radiogroup" aria-label={`Waiter for ${table.label}`}>
+          {waiters.data.map((w) => {
+            const active = table.waiter?.id === w.id;
+            return (
+              <button key={w.id} type="button" role="radio" aria-checked={active} className={cx('waiter-option', active && 'active')} onClick={() => void choose(w)} disabled={busy !== null || active}>
+                <UserRound size={18} />
+                <span>{w.name}</span>
+                {busy === w.id ? <Spinner /> : active && <Check size={18} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {table.waiter && (
+        <button type="button" className="btn btn-danger-soft btn-block" onClick={() => void choose(null)} disabled={busy !== null}>
+          {busy === 'none' ? <Spinner /> : <X size={16} />} Remove waiter
+        </button>
+      )}
+    </Modal>
   );
 }
 
@@ -433,9 +552,11 @@ function GroupCard({
         <div className="group-icon" style={{ background: bg, color: fg }}>
           <Users />
         </div>
-        <div style={{ minWidth: 0 }}>
-          <div className="group-name">{group.groupName}</div>
-          <div className="muted">
+        <div className="group-title">
+          <div className="group-name" title={group.groupName}>
+            {group.groupName}
+          </div>
+          <div className="muted nowrap">
             {group.guestCount} {group.guestCount === 1 ? 'Person' : 'People'}
           </div>
           {isWaiter && <KitchenBadges group={group} />}
@@ -582,6 +703,7 @@ function TableDetail({
   const queryClient = useQueryClient();
   const { activeBranch, user } = useAuth();
   const isWaiter = user?.role === 'WAITER';
+  const takenBy = takenFrom(table, user);
   const branchId = activeBranch!.id;
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -741,11 +863,10 @@ function TableDetail({
     <SidePanel
       className={hiddenOnPhone ? 'phone-hidden' : undefined}
       title={`Table ${table.label}`}
+      aside={<TableWaiterButton table={table} />}
       subtitle={
         <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-          <span className="nowrap">
-            Capacity: {table.seats} Seats · {table.floor}
-          </span>
+          <span className="nowrap">Capacity: {table.seats} Seats</span>
           <span className="seats-chip" style={{ marginLeft: 0 }}>
             {table.seatsUsed} / {table.seats} Seats Used
           </span>
@@ -776,49 +897,61 @@ function TableDetail({
         </div>
       )}
 
-      {table.groups.map((g, i) => {
-        const active = g.draftId === activeDraftId;
-        return (
-          <GroupCard
-            key={g.draftId}
-            group={g}
-            index={i}
-            branchId={branchId}
-            active={active}
-            onAddItems={() => (active ? onExitOrder() : onOrder(g.draftId))}
-            onGenerate={(liveTotal) => setPaying({ ...g, grandTotal: liveTotal })}
-            onDelete={() => setDeleting(g)}
-            onSent={() => (active ? void refresh() : markSent(g.draftId))}
-            onAction={(kind) => setAction({ kind, group: g })}
-          />
-        );
-      })}
-
-      {adding ? (
-        <NewGroupForm free={free} busy={busy} nextName={nextGroupName(table.groups.map((g) => g.groupName))} onCreate={createGroup} onCancel={() => setAdding(false)} />
-      ) : (
-        <button className="add-group" onClick={() => setAdding(true)} disabled={free === 0 || table.status === 'RESERVED'}>
-          <span className="plus">
-            <Plus size={30} />
-          </span>
+      {/* Given to another waiter while it was open here: only they take its orders now. */}
+      {takenBy ? (
+        <div className="alert alert-info">
+          <UserRound size={18} />
           <span>
-            <strong>Add New Group</strong>
-            <small>
-              ({free} seat{free === 1 ? '' : 's'} available)
-            </small>
+            {table.label} is {takenBy}’s table – only {takenBy} can take its orders.
           </span>
-        </button>
-      )}
-
-      <div className="seat-summary">
-        <Users />
-        <div>
-          <strong>Available Seats: {free}</strong>
-          <div className="muted">
-            {free === 0 ? 'This table is full.' : `You can add ${free} more ${free === 1 ? 'person' : 'people'} to this table.`}
-          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          {table.groups.map((g, i) => {
+            const active = g.draftId === activeDraftId;
+            return (
+              <GroupCard
+                key={g.draftId}
+                group={g}
+                index={i}
+                branchId={branchId}
+                active={active}
+                onAddItems={() => (active ? onExitOrder() : onOrder(g.draftId))}
+                onGenerate={(liveTotal) => setPaying({ ...g, grandTotal: liveTotal })}
+                onDelete={() => setDeleting(g)}
+                onSent={() => (active ? void refresh() : markSent(g.draftId))}
+                onAction={(kind) => setAction({ kind, group: g })}
+              />
+            );
+          })}
+    
+          {adding ? (
+            <NewGroupForm free={free} busy={busy} nextName={nextGroupName(table.groups.map((g) => g.groupName))} onCreate={createGroup} onCancel={() => setAdding(false)} />
+          ) : (
+            <button className="add-group" onClick={() => setAdding(true)} disabled={free === 0 || table.status === 'RESERVED'}>
+              <span className="plus">
+                <Plus size={30} />
+              </span>
+              <span>
+                <strong>Add New Group</strong>
+                <small>
+                  ({free} seat{free === 1 ? '' : 's'} available)
+                </small>
+              </span>
+            </button>
+          )}
+    
+          <div className="seat-summary">
+            <Users />
+            <div>
+              <strong>Available Seats: {free}</strong>
+              <div className="muted">
+                {free === 0 ? 'This table is full.' : `You can add ${free} more ${free === 1 ? 'person' : 'people'} to this table.`}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {action?.kind === 'move' && (
         <MoveGroupModal group={action.group} table={table} tables={allTables} onClose={() => setAction(null)} onConfirm={(id) => moveGroup(action.group, id)} />

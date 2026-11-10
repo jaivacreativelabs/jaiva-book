@@ -137,6 +137,8 @@ transactions count as revenue.
 | POST | `/tables` | `{ label, seats, shape, floor, status }` |
 | PATCH | `/tables/:id` | `{ label?, seats?, shape?, floor?, status? }` (seats cannot drop below seats in use) |
 | DELETE | `/tables/:id` | deactivates; rejected while the table has active groups |
+| GET | `/tables/waiters` | Restaurant Admin: the branch's active waiters `[{ id, name }]` |
+| PUT | `/tables/:id/waiter` | Restaurant Admin: `{ waiterId: id \| null }` gives the table to a waiter / takes the waiter off. Each table in `GET /tables` has `waiter: { id, name } \| null` |
 
 ## Bills (drafts) – `/bills` (branch scoped)
 

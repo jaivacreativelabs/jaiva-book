@@ -12,6 +12,10 @@ const tableSchema = new Schema(
     floor: { type: String, default: 'Ground Floor', trim: true, maxlength: 40 },
     status: { type: String, enum: TABLE_STATUSES, default: 'AVAILABLE' },
     isActive: { type: Boolean, default: true },
+    // The waiter looking after the guests now (set by the cashier or the first waiter to take an
+    // order here); cleared when the last group leaves. Other waiters cannot take its orders.
+    waiterId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+    waiterName: { type: String, default: '' },
     // bumped whenever seats are claimed so concurrent group creation is serialised
     version: { type: Number, default: 0 },
   },

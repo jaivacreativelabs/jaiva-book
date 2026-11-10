@@ -440,6 +440,9 @@ async function getRestaurantAdminOr404(id: string) {
   return u;
 }
 
+/** A waiter who leaves (deleted, deactivated, moved to another restaurant) no longer holds tables. */
+const freeWaiterTables = (userId: Types.ObjectId) => TableModel.updateMany({ waiterId: userId }, { $set: { waiterId: null, waiterName: '' }, $inc: { version: 1 } });
+
 /** Audit wording per account type. */
 const accountKind = (role: string) =>
   role === 'KITCHEN'
@@ -503,6 +506,7 @@ export async function updateRestaurantAdmin(actor: AuthUser, id: string, input: 
     if (!(await BranchModel.exists({ _id: user.branchIds[0], 'kitchenStations._id': user.kitchenStationId }))) user.kitchenStationId = null;
   }
   await user.save();
+  if (input.branchIds && before.join() !== user.branchIds.map(String).join()) await freeWaiterTables(user._id);
   await audit(actor, {
     action: `${accountKind(user.role).action}_${input.branchIds ? 'REASSIGNED' : 'UPDATED'}`,
     entityType: 'User',
@@ -518,6 +522,7 @@ export async function setRestaurantAdminStatus(actor: AuthUser, id: string, stat
   user.status = status;
   if (status === 'INACTIVE') user.tokenVersion += 1; // sign out everywhere
   await user.save();
+  if (status === 'INACTIVE') await freeWaiterTables(user._id);
   await audit(actor, {
     action: `${accountKind(user.role).action}_${status === 'ACTIVE' ? 'ACTIVATED' : 'DEACTIVATED'}`,
     entityType: 'User',
@@ -536,6 +541,7 @@ export async function deleteRestaurantAdmin(actor: AuthUser, id: string) {
   const user = await getRestaurantAdminOr404(id);
   await DraftModel.deleteMany({ ownerUserId: user._id, type: 'COUNTER', status: 'ACTIVE' });
   await UserModel.deleteOne({ _id: user._id });
+  await freeWaiterTables(user._id);
   await audit(actor, {
     action: `${accountKind(user.role).action}_DELETED`,
     entityType: 'User',
