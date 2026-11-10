@@ -67,7 +67,7 @@ const TAKE_ORDER_NAV: NavItem = { to: '/waiter/order', label: 'Take Order', icon
 
 const ADMIN_NAV: NavItem[] = [
   { to: '/admin/restaurants', label: 'Restaurants', icon: Store },
-  { to: '/admin/users', label: 'Admins', icon: Users },
+  { to: '/admin/users', label: 'Employees', icon: Users },
   { to: '/admin/menu', label: 'Menu', icon: Utensils },
   { to: '/admin/transactions', label: 'Transactions', icon: FileText },
   { to: '/admin/served', label: 'Served Orders', icon: CheckCheck },

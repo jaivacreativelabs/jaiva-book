@@ -154,6 +154,28 @@ describe('Super Admin – Restaurant Admin accounts', () => {
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
+  it('deletes a login for good: signed out at once, email free again, others untouched', async () => {
+    const u = ok<{ id: string }>(
+      await w.sa.post('/api/v1/admin/users', { name: 'Leaving', email: 'leaving@test.local', password: PASSWORD, branchIds: [w.branchA1] }),
+      201,
+    );
+    const ra = (await new Client().login('leaving@test.local')).useBranch(w.branchA1);
+    ok(await ra.get('/api/v1/bills/counter'));
+
+    // Restaurant Admins cannot delete logins.
+    expect((await w.adminA1.delete(`/api/v1/admin/users/${u.id}`)).status).toBe(403);
+    ok(await w.sa.delete(`/api/v1/admin/users/${u.id}`));
+
+    expect((await ra.get('/api/v1/tables')).status).toBe(401);
+    expect((await new Client().post('/api/v1/auth/login', { email: 'leaving@test.local', password: PASSWORD })).status).toBe(401);
+    expect(ok<{ email: string }[]>(await w.sa.get('/api/v1/admin/users')).map((x) => x.email)).not.toContain('leaving@test.local');
+    expect(await AuditLogModel.exists({ action: 'RESTAURANT_ADMIN_DELETED', entityId: u.id })).toBeTruthy();
+    expect((await w.sa.delete(`/api/v1/admin/users/${u.id}`)).status).toBe(404);
+    expect((await w.adminA1.get('/api/v1/tables')).status).toBe(200);
+    // The email can be used for a new login.
+    ok(await w.sa.post('/api/v1/admin/users', { name: 'Back', email: 'leaving@test.local', password: PASSWORD, branchIds: [w.branchA1] }), 201);
+  });
+
   it('writes audit logs for administrative actions', async () => {
     expect(await AuditLogModel.countDocuments({ action: 'RESTAURANT_CREATED' })).toBe(5); // A, B, C, Keda Kari and the deleted one
     expect(await AuditLogModel.countDocuments({ action: 'RESTAURANT_ADMIN_REASSIGNED' })).toBe(1);

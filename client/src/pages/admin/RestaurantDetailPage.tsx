@@ -544,7 +544,7 @@ export function RestaurantDetailPage() {
           {(
             [
               ['branches', branches.length > 1 ? `Locations (${branches.length})` : 'Bills & Kitchen'],
-              ['admins', `Admins (${admins.length})`],
+              ['admins', `Employees (${admins.length})`],
               ['settings', 'Taxes & Receipt'],
             ] as const
           ).map(([key, label]) => (
@@ -622,10 +622,10 @@ export function RestaurantDetailPage() {
         {tab === 'admins' && (
           <div className="card">
             <div className="row card-pad" style={{ paddingBottom: 14 }}>
-              <span className="card-title">Restaurant Admins</span>
+              <span className="card-title">Employees</span>
               <span className="spacer" />
               <button className="btn btn-primary btn-sm" onClick={() => setPanel({ kind: 'admin' })} disabled={branches.length === 0}>
-                <CirclePlus size={16} /> Add Admin
+                <CirclePlus size={16} /> Add Employee
               </button>
             </div>
             <AdminsTable users={admins} branches={branches} />

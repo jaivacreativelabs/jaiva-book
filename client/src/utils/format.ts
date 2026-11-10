@@ -61,6 +61,21 @@ export function taxLabel(t: TaxLine, included: boolean): string {
   return `${t.name} (${bpsToPercent(t.rateBps)}%)${included ? ' incl.' : ''}`;
 }
 
+/**
+ * A "GST (5%)" line shown as its CGST (2.5%) + SGST (2.5%) halves; other lines as they are.
+ * GST is worked out (and rounded) once, so the halves always add up to it – an odd paisa goes
+ * on CGST. `of` keeps the GST line, so the halves still find the items it was charged on.
+ */
+export function gstHalves(t: TaxLine): { label: TaxLine; of: TaxLine }[] {
+  if (t.name !== 'GST') return [{ label: t, of: t }];
+  const cgst = Math.ceil(t.amount / 2);
+  const rate = Math.ceil(t.rateBps / 2);
+  return [
+    { label: { name: 'CGST', rateBps: rate, amount: cgst }, of: t },
+    { label: { name: 'SGST', rateBps: t.rateBps - rate, amount: t.amount - cgst }, of: t },
+  ];
+}
+
 interface TaxedItem {
   name: string;
   taxable: boolean;

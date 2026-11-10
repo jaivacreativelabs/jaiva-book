@@ -1201,6 +1201,20 @@ html.app-open body {
 .data-table .center {
   text-align: center;
 }
+/* A section heading inside a table (Admins / Kitchen / Waiters). */
+.data-table tr.table-group-head td {
+  padding: 14px 14px 8px;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.data-table tr.table-group-head td > svg {
+  vertical-align: -3px;
+  margin-right: 4px;
+}
 .data-table .right {
   text-align: right;
 }
@@ -3495,6 +3509,15 @@ html.app-open body {
   }
   .data-table tbody tr.selected td:first-child {
     box-shadow: none;
+  }
+  .data-table tbody tr.table-group-head {
+    padding: 14px 14px 4px;
+    background: var(--color-surface-muted);
+  }
+  .data-table tr.table-group-head td {
+    padding: 0;
+    background: none;
+    font-size: 0.75rem;
   }
   /* a list with phone cards hides its wide table */
   .data-table-wrap.has-cards {

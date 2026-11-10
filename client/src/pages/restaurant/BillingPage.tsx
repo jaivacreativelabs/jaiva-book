@@ -42,7 +42,7 @@ import { useAuth } from '../../store/auth';
 import type { DraftSyncState, LocalBill } from '../../store/draftSync';
 import { useToast } from '../../store/toast';
 import { usePageSearch } from '../../store/topbar';
-import { cx, formatMoney, newIdempotencyKey, taxedItemsText, taxLabel } from '../../utils/format';
+import { cx, formatMoney, gstHalves, newIdempotencyKey, taxedItemsText, taxLabel } from '../../utils/format';
 import { splitVariant } from '../../utils/menu';
 
 /** `compact`: only the icon while all is well (room for Add Sale); a problem always shows its words. */
@@ -380,13 +380,13 @@ export function BillingView({
                   <span>− {formatMoney(totals.discountAmount)}</span>
                 </div>
               )}
-              {totals.taxes.map((t) => (
-                <div key={`${t.name}|${t.rateBps}`}>
+              {totals.taxes.flatMap(gstHalves).map(({ label, of }) => (
+                <div key={`${label.name}|${label.rateBps}|${of.rateBps}`}>
                   <span>
-                    {taxLabel(t, settings.pricesIncludeTax)}
-                    <small className="tax-items">{taxedItemsText(t, local?.items ?? [])}</small>
+                    {taxLabel(label, settings.pricesIncludeTax)}
+                    <small className="tax-items">{taxedItemsText(of, local?.items ?? [])}</small>
                   </span>
-                  <span>{formatMoney(t.amount)}</span>
+                  <span>{formatMoney(label.amount)}</span>
                 </div>
               ))}
             </div>

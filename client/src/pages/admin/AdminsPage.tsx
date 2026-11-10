@@ -1,9 +1,9 @@
 import { passwordSchema, placeName, type BranchDTO, type StaffRole, type UserDTO } from '@rb/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChefHat, CirclePlus, ConciergeBell, KeyRound, Pencil, Power, Store, Users } from 'lucide-react';
+import { ChefHat, CirclePlus, ConciergeBell, KeyRound, Pencil, Power, Store, Trash2, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { ActiveBadge } from '../../components/badges';
-import { CancelButton, ConfirmButton, ConfirmDialog, Empty, Field, Loading, Modal, PageHeader, SidePanel, Spinner } from '../../components/ui';
+import { CancelButton, ConfirmButton, ConfirmDialog, Empty, Field, Loading, Modal, PageHeader, Spinner } from '../../components/ui';
 import { api, errorMessage } from '../../services/api';
 import { useToast } from '../../store/toast';
 import { usePageSearch } from '../../store/topbar';
@@ -81,27 +81,24 @@ export function AdminForm({ initial, restrictTo, onClose }: { initial?: UserDTO;
   };
 
   return (
-    <SidePanel
-      title={initial ? `Edit ${kind}` : 'Add Account'}
-      subtitle={
-        role === 'KITCHEN'
-          ? 'A Kitchen login only sees the Kitchen Display of one restaurant – no bills, sales or prices'
-          : role === 'WAITER'
-            ? 'A Waiter login (one per waiter) only sees food the kitchen marked Ready in one restaurant, and marks it Served'
-            : 'A Restaurant Admin runs one restaurant – its billing, tables, menu and transactions'
-      }
-      onClose={onClose}
-    >
+    <Modal title={initial ? `Edit ${kind}` : 'Add Employee'} onClose={onClose} width={560}>
       <form className="stack" style={{ gap: 18 }} onSubmit={submit}>
+        <p className="muted" style={{ margin: '-8px 0 0' }}>
+          {role === 'KITCHEN'
+            ? 'A Kitchen login only sees the Kitchen Display of one restaurant – no bills, sales or prices'
+            : role === 'WAITER'
+              ? 'A Waiter login (one per waiter) only sees food the kitchen marked Ready in one restaurant, and marks it Served'
+              : 'A Restaurant Admin runs one restaurant – its billing, tables, menu and transactions'}
+        </p>
         {!initial && (
           <div className="field">
-            <span className="field-label">Account type</span>
-            <div className="row" style={{ gap: 8 }} role="radiogroup" aria-label="Account type">
+            <span className="field-label">Role</span>
+            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }} role="radiogroup" aria-label="Role">
               {(
                 [
-                  ['RESTAURANT_ADMIN', 'Restaurant Admin', Store],
-                  ['KITCHEN', 'Kitchen login', ChefHat],
-                  ['WAITER', 'Waiter login', ConciergeBell],
+                  ['RESTAURANT_ADMIN', 'Admin', Store],
+                  ['KITCHEN', 'Kitchen', ChefHat],
+                  ['WAITER', 'Waiter', ConciergeBell],
                 ] as const
               ).map(([value, label, Icon]) => (
                 <button key={value} type="button" role="radio" aria-checked={role === value} className={cx('chip outline', role === value && 'active')} onClick={() => setRole(value)}>
@@ -145,7 +142,7 @@ export function AdminForm({ initial, restrictTo, onClose }: { initial?: UserDTO;
           {busy ? <Spinner /> : <CirclePlus />} {initial ? 'Save Changes' : role === 'KITCHEN' ? 'Create Kitchen Login' : role === 'WAITER' ? 'Create Waiter Login' : 'Create Admin'}
         </button>
       </form>
-    </SidePanel>
+    </Modal>
   );
 }
 
@@ -181,6 +178,13 @@ function ResetPasswordModal({ user, onClose }: { user: UserDTO; onClose: () => v
   );
 }
 
+/** The employee list's sections, in this order. */
+const EMPLOYEE_GROUPS: { key: UserDTO['role']; label: string; Icon: typeof Store }[] = [
+  { key: 'RESTAURANT_ADMIN', label: 'Admins', Icon: Store },
+  { key: 'KITCHEN', label: 'Kitchen', Icon: ChefHat },
+  { key: 'WAITER', label: 'Waiters', Icon: ConciergeBell },
+];
+
 export function AdminsTable({ users, branches }: { users: UserDTO[]; branches: BranchDTO[] }) {
   const restaurantName = new Map((useRestaurants().data ?? []).map((r) => [r.id, r.name]));
   const queryClient = useQueryClient();
@@ -188,7 +192,16 @@ export function AdminsTable({ users, branches }: { users: UserDTO[]; branches: B
   const [editing, setEditing] = useState<UserDTO | null>(null);
   const [resetting, setResetting] = useState<UserDTO | null>(null);
   const [toggling, setToggling] = useState<UserDTO | null>(null);
+  const [deleting, setDeleting] = useState<UserDTO | null>(null);
+  const [busy, setBusy] = useState(false);
   const branchName = new Map(branches.map((b) => [b.id, b]));
+  const counterName = (u: UserDTO) =>
+    u.kitchenStationId ? (branchName.get(u.branchIds[0])?.kitchenStations.find((s) => s.id === u.kitchenStationId)?.name ?? '') : '';
+  // Kitchen logins are listed by counter; a login for every counter comes first.
+  const groups = EMPLOYEE_GROUPS.map((g) => ({
+    ...g,
+    users: users.filter((u) => u.role === g.key).sort((a, b) => (g.key === 'KITCHEN' ? counterName(a).localeCompare(counterName(b)) : 0)),
+  })).filter((g) => g.users.length > 0);
 
   const toggle = async (u: UserDTO) => {
     try {
@@ -202,7 +215,21 @@ export function AdminsTable({ users, branches }: { users: UserDTO[]; branches: B
     }
   };
 
-  if (users.length === 0) return <Empty icon={<Users />} title="No Restaurant Admins yet" />;
+  const remove = async (u: UserDTO) => {
+    setBusy(true);
+    try {
+      await api.delete(`/admin/users/${u.id}`, { branchId: null });
+      await queryClient.invalidateQueries({ queryKey: ['admin'] });
+      toast.success(`${u.name} deleted`);
+      setDeleting(null);
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (users.length === 0) return <Empty icon={<Users />} title="No employees yet" />;
   return (
     <>
       <div className="data-table-wrap">
@@ -216,54 +243,58 @@ export function AdminsTable({ users, branches }: { users: UserDTO[]; branches: B
               <th className="right">Actions</th>
             </tr>
           </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td>
-                  <strong>{u.name}</strong>
-                  {u.role === 'KITCHEN' && (
-                    <span className="badge badge-amber badge-sm" style={{ marginLeft: 6 }}>
-                      Kitchen
-                      {u.kitchenStationId && ` · ${branchName.get(u.branchIds[0])?.kitchenStations.find((s) => s.id === u.kitchenStationId)?.name ?? ''}`}
-                    </span>
-                  )}
-                  {u.role === 'WAITER' && (
-                    <span className="badge badge-purple badge-sm" style={{ marginLeft: 6 }}>
-                      Waiter
-                    </span>
-                  )}
-                  <span className="cell-sub">{u.email}</span>
-                </td>
-                <td data-label="Restaurant">
-                  <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
-                    {u.branchIds.map((id) => {
-                      const b = branchName.get(id);
-                      return (
-                        <span key={id} className="badge badge-primary badge-sm">
-                          {b ? placeName(restaurantName.get(b.restaurantId) ?? '', b.name) : 'Unknown'}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </td>
-                <td data-label="Status">
-                  <ActiveBadge status={u.status} />
-                </td>
-                <td data-label="Last sign-in" className="muted nowrap">{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : 'Never'}</td>
-                <td className="right nowrap">
-                  <button className="icon-btn plain" onClick={() => setEditing(u)} title="Edit / reassign" aria-label={`Edit ${u.name}`}>
-                    <Pencil />
-                  </button>
-                  <button className="icon-btn plain" onClick={() => setResetting(u)} title="Reset password" aria-label={`Reset password of ${u.name}`}>
-                    <KeyRound />
-                  </button>
-                  <button className="icon-btn plain" onClick={() => setToggling(u)} title={u.status === 'ACTIVE' ? 'Deactivate' : 'Activate'} aria-label={`Toggle ${u.name}`}>
-                    <Power />
-                  </button>
+          {groups.map((g) => (
+            <tbody key={g.key}>
+              <tr className="table-group-head">
+                <td colSpan={5}>
+                  <g.Icon size={16} /> {g.label} <span className="badge badge-gray badge-sm">{g.users.length}</span>
                 </td>
               </tr>
-            ))}
-          </tbody>
+              {g.users.map((u) => (
+                <tr key={u.id}>
+                  <td>
+                    <strong>{u.name}</strong>
+                    {counterName(u) && (
+                      <span className="badge badge-amber badge-sm" style={{ marginLeft: 6 }}>
+                        {counterName(u)} counter
+                      </span>
+                    )}
+                    <span className="cell-sub">{u.email}</span>
+                  </td>
+                  <td data-label="Restaurant">
+                    <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+                      {u.branchIds.map((id) => {
+                        const b = branchName.get(id);
+                        return (
+                          <span key={id} className="badge badge-primary badge-sm">
+                            {b ? placeName(restaurantName.get(b.restaurantId) ?? '', b.name) : 'Unknown'}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </td>
+                  <td data-label="Status">
+                    <ActiveBadge status={u.status} />
+                  </td>
+                  <td data-label="Last sign-in" className="muted nowrap">{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : 'Never'}</td>
+                  <td className="right nowrap">
+                    <button className="icon-btn plain" onClick={() => setEditing(u)} title="Edit / reassign" aria-label={`Edit ${u.name}`}>
+                      <Pencil />
+                    </button>
+                    <button className="icon-btn plain" onClick={() => setResetting(u)} title="Reset password" aria-label={`Reset password of ${u.name}`}>
+                      <KeyRound />
+                    </button>
+                    <button className="icon-btn plain" onClick={() => setToggling(u)} title={u.status === 'ACTIVE' ? 'Deactivate' : 'Activate'} aria-label={`Toggle ${u.name}`}>
+                      <Power />
+                    </button>
+                    <button className="icon-btn plain danger-text" onClick={() => setDeleting(u)} title="Delete" aria-label={`Delete ${u.name}`}>
+                      <Trash2 />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          ))}
         </table>
       </div>
       {editing && <AdminForm initial={editing} onClose={() => setEditing(null)} />}
@@ -278,12 +309,23 @@ export function AdminsTable({ users, branches }: { users: UserDTO[]; branches: B
           onConfirm={() => toggle(toggling)}
         />
       )}
+      {deleting && (
+        <ConfirmDialog
+          title={`Delete ${deleting.name}?`}
+          message={`${deleting.email} is deleted for good and signed out at once. Bills and orders they made stay, with their name on them. To only block the login for now, use Deactivate instead.`}
+          confirmLabel="Delete"
+          danger
+          busy={busy}
+          onCancel={() => !busy && setDeleting(null)}
+          onConfirm={() => void remove(deleting)}
+        />
+      )}
     </>
   );
 }
 
 export function AdminsPage() {
-  const search = usePageSearch('Search admins by name or email...');
+  const search = usePageSearch('Search employees by name or email...');
   const users = useQuery({ queryKey: adminKeys.users, queryFn: () => api.get<UserDTO[]>('/admin/users', { branchId: null }) });
   const branches = useAllBranches();
   const [adding, setAdding] = useState(false);
@@ -296,11 +338,11 @@ export function AdminsPage() {
     <>
       <div className="page">
         <PageHeader
-          title="Admins &amp; Kitchen Logins"
-          subtitle="Restaurant Admins run billing; Kitchen and Waiter logins only see their own screen"
+          title="Employees"
+          subtitle="Admins run billing; Kitchen and Waiter logins only see their own screen"
           actions={
             <button className="btn btn-primary btn-lg" onClick={() => setAdding(true)}>
-              <CirclePlus /> Add Account
+              <CirclePlus /> Add Employee
             </button>
           }
         />

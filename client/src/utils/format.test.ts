@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { itemTaxShares } from './format';
+import { gstHalves, itemTaxShares } from './format';
+
+describe('gstHalves', () => {
+  it('shows GST 5% as CGST 2.5% + SGST 2.5% that add up to it exactly', () => {
+    const gst = { name: 'GST', rateBps: 500, amount: 175 };
+    expect(gstHalves(gst).map((h) => h.label)).toEqual([
+      { name: 'CGST', rateBps: 250, amount: 88 },
+      { name: 'SGST', rateBps: 250, amount: 87 },
+    ]);
+    expect(gstHalves(gst).every((h) => h.of === gst)).toBe(true);
+  });
+
+  it('leaves other tax lines alone', () => {
+    const t = { name: 'Service charge', rateBps: 1000, amount: 200 };
+    expect(gstHalves(t)).toEqual([{ label: t, of: t }]);
+  });
+});
 
 const item = (name: string, lineTotal: number, taxRateBps: number | null) => ({ name, lineTotal, taxRateBps, taxable: taxRateBps !== 0, extraTaxes: [] });
 

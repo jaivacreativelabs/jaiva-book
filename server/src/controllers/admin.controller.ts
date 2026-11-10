@@ -99,7 +99,10 @@ export const setUserStatus = async (req: Request, res: Response) => {
   const { status } = parse(statusSchema, req.body);
   res.json({ data: await admin.setRestaurantAdminStatus(currentUser(req), id(req), status) });
 };
-export const resetUserPassword = async (req: Request, res: Response) => {
+export const deleteUser = async (req: Request, res: Response) => {
+  res.json({ data: await admin.deleteRestaurantAdmin(currentUser(req), id(req)) });
+};
+export const resetUserPassword =async (req: Request, res: Response) => {
   const { password } = parse(resetPasswordSchema, req.body);
   res.json({ data: await admin.resetRestaurantAdminPassword(currentUser(req), id(req), password) });
 };

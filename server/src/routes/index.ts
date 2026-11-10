@@ -97,6 +97,7 @@ export function createApiRouter(): Router {
   adminRouter.post('/users', admin.createUser);
   adminRouter.patch('/users/:id', admin.updateUser);
   adminRouter.patch('/users/:id/status', admin.setUserStatus);
+  adminRouter.delete('/users/:id', admin.deleteUser);
   adminRouter.post('/users/:id/reset-password', admin.resetUserPassword);
   adminRouter.get('/demo-accounts', admin.listDemoAccounts);
   adminRouter.patch('/demo-accounts/:id', admin.updateDemoAccount);

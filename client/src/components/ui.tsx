@@ -60,7 +60,8 @@ export function Modal({ title, children, onClose, width }: { title: ReactNode; c
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
-    ref.current?.querySelector<HTMLElement>('input, select, textarea, button:not(.modal-close)')?.focus();
+    // Keep a field the content focused itself (autoFocus), and never pull focus on a re-render.
+    if (!ref.current?.contains(document.activeElement)) ref.current?.querySelector<HTMLElement>('input, select, textarea, button:not(.modal-close)')?.focus();
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   return (

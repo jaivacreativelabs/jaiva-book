@@ -80,6 +80,7 @@ Unknown body fields are rejected (`.strict()` schemas), so fields such as `role`
 | PATCH | `/admin/users/:id` | `{ name?, branchIds?: [branchId], kitchenStationId?: id \| null }` (move the admin to another branch; a counter not in the new branch is dropped) |
 | PATCH | `/admin/users/:id/status` | `{ status }` – deactivation revokes sessions |
 | POST | `/admin/users/:id/reset-password` | `{ password }` |
+| DELETE | `/admin/users/:id` | Deletes a Restaurant Admin / Kitchen / Waiter login for good (signed out at once; bills keep the name; its open counter bill goes too) |
 
 Super Admin accounts cannot be read, modified or created through these endpoints.
 
