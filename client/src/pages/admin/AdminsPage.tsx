@@ -1,6 +1,6 @@
 import { passwordSchema, placeName, type BranchDTO, type StaffRole, type UserDTO } from '@rb/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChefHat, CirclePlus, ConciergeBell, KeyRound, Pencil, Power, Store, Trash2, Users } from 'lucide-react';
+import { ChefHat, CirclePlus, ConciergeBell, KeyRound, LayoutGrid, Pencil, Power, Store, Trash2, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { ActiveBadge } from '../../components/badges';
 import { CancelButton, ConfirmButton, ConfirmDialog, Empty, Field, Loading, Modal, PageHeader, Spinner } from '../../components/ui';
@@ -324,29 +324,55 @@ export function AdminsTable({ users, branches }: { users: UserDTO[]; branches: B
   );
 }
 
+/** The filter bubbles above the employee list: the Restaurant Admin is the one at the cash counter. */
+const ROLE_FILTERS: { key: 'ALL' | UserDTO['role']; label: string; Icon: typeof Store }[] = [
+  { key: 'ALL', label: 'All', Icon: LayoutGrid },
+  { key: 'RESTAURANT_ADMIN', label: 'Cashier', Icon: Store },
+  { key: 'KITCHEN', label: 'Kitchen', Icon: ChefHat },
+  { key: 'WAITER', label: 'Waiter', Icon: ConciergeBell },
+];
+
 export function AdminsPage() {
   const search = usePageSearch('Search employees by name or email...');
   const users = useQuery({ queryKey: adminKeys.users, queryFn: () => api.get<UserDTO[]>('/admin/users', { branchId: null }) });
   const branches = useAllBranches();
   const [adding, setAdding] = useState(false);
-  const visible = useMemo(() => {
+  const [role, setRole] = useState<(typeof ROLE_FILTERS)[number]['key']>('ALL');
+  const matching = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (users.data ?? []).filter((u) => !q || u.name.toLowerCase().includes(q) || u.email.includes(q));
   }, [users.data, search]);
+  const visible = role === 'ALL' ? matching : matching.filter((u) => u.role === role);
+  const filter = ROLE_FILTERS.find((f) => f.key === role) ?? ROLE_FILTERS[0];
 
   return (
     <>
       <div className="page">
         <PageHeader
           title="Employees"
-          subtitle="Admins run billing; Kitchen and Waiter logins only see their own screen"
           actions={
             <button className="btn btn-primary btn-lg" onClick={() => setAdding(true)}>
               <CirclePlus /> Add Employee
             </button>
           }
         />
-        <div className="card">{users.isLoading ? <Loading /> : <AdminsTable users={visible} branches={branches.data ?? []} />}</div>
+        <div className="chips" role="radiogroup" aria-label="Show employees" style={{ marginBottom: 16 }}>
+          {ROLE_FILTERS.map(({ key, label, Icon }) => (
+            <button key={key} type="button" role="radio" aria-checked={role === key} className={cx('chip', role === key && 'active')} onClick={() => setRole(key)}>
+              <Icon /> {label}
+              <span className="badge badge-gray badge-sm">{key === 'ALL' ? matching.length : matching.filter((u) => u.role === key).length}</span>
+            </button>
+          ))}
+        </div>
+        <div className="card">
+          {users.isLoading ? (
+            <Loading />
+          ) : role !== 'ALL' && visible.length === 0 && (users.data?.length ?? 0) > 0 ? (
+            <Empty icon={<filter.Icon />} title={`No ${filter.label.toLowerCase()} logins${search.trim() ? ' match the search' : ' yet'}`} />
+          ) : (
+            <AdminsTable users={visible} branches={branches.data ?? []} />
+          )}
+        </div>
       </div>
       {adding && <AdminForm onClose={() => setAdding(false)} />}
     </>

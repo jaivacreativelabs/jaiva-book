@@ -130,6 +130,20 @@ describe('table groups and seats', () => {
     expect(last.groupName).toBe('Group 3');
   });
 
+  it('refuses a table label already used, on this floor or another', async () => {
+    ok(await w.adminA1.post('/api/v1/tables', { label: 'L7', seats: 4, shape: 'SQUARE', floor: 'Ground Floor' }), 201);
+    const same = await w.adminA1.post('/api/v1/tables', { label: ' l7 ', seats: 2, shape: 'SQUARE', floor: 'Ground Floor' });
+    expect(same.status).toBe(409);
+    expect(same.body.error.message).toBe('Table label already exists on this floor.');
+    const other = await w.adminA1.post('/api/v1/tables', { label: 'L7', seats: 2, shape: 'SQUARE', floor: 'Terrace' });
+    expect(other.status).toBe(409);
+    expect(other.body.error.message).toBe('Table label already exists on Ground Floor.');
+    const t = ok<{ id: string }>(await w.adminA1.post('/api/v1/tables', { label: 'L8', seats: 4, shape: 'SQUARE', floor: 'Ground Floor' }), 201);
+    const rename = await w.adminA1.patch(`/api/v1/tables/${t.id}`, { label: 'L7' });
+    expect(rename.status).toBe(409);
+    expect(rename.body.error.message).toBe('Table label already exists on this floor.');
+  });
+
   it('lets the admin name a group and rejects a duplicate name at the same table', async () => {
     const t = ok<{ id: string }>(await w.adminA1.post('/api/v1/tables', { label: 'N1', seats: 6, shape: 'SQUARE', floor: 'Ground Floor' }), 201);
     const named = ok<Draft>(await w.adminA1.post('/api/v1/bills/table-groups', { tableId: t.id, guestCount: 2, groupName: '  Ravi   family ' }), 201);

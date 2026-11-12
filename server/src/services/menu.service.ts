@@ -111,7 +111,7 @@ export async function createCategory(actor: AuthUser, scope: Scope, input: Categ
   // A shared category this branch deleted does not block the name.
   const clashes = await CategoryModel.find(nameClashFilter(scope, key)).lean<CategoryLean[]>();
   if (clashes.some((c) => !effectiveCategory(c, branchOf(scope)).deleted)) {
-    throw conflict(`Category "${input.name}" already exists`, 'DUPLICATE');
+    throw conflict('Category already exists.', 'DUPLICATE');
   }
   const last = await CategoryModel.findOne({ restaurantId: scope.restaurant._id, branchId: branchOf(scope) })
     .sort({ displayOrder: -1 })
@@ -147,7 +147,7 @@ export async function updateCategory(actor: AuthUser, scope: Scope, id: string, 
     if (input.name && nameKey(input.name) !== cat.nameKey) {
       const key = nameKey(input.name);
       if (await CategoryModel.exists({ ...nameClashFilter(scope, key), _id: { $ne: cat._id } })) {
-        throw conflict(`Category "${input.name}" already exists`, 'DUPLICATE');
+        throw conflict('Category already exists.', 'DUPLICATE');
       }
       cat.name = input.name;
       cat.nameKey = key;
@@ -157,7 +157,7 @@ export async function updateCategory(actor: AuthUser, scope: Scope, id: string, 
     // A main-menu category renamed or given another icon in a branch: for that branch only.
     if (input.name) {
       const others = (await listCategories(scope, true)).filter((c) => c.id !== String(cat._id));
-      if (others.some((c) => nameKey(c.name) === nameKey(input.name!))) throw conflict(`Category "${input.name}" already exists`, 'DUPLICATE');
+      if (others.some((c) => nameKey(c.name) === nameKey(input.name!))) throw conflict('Category already exists.', 'DUPLICATE');
     }
     setCategoryOverride(cat, branchId!, { ...(input.name && { name: input.name }), ...(input.icon !== undefined && { icon: input.icon }) });
   }

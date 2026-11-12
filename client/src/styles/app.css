@@ -1975,7 +1975,8 @@ html.app-open body {
 .waiter-chip.as-button:hover {
   background: #d7ecd9;
 }
-.waiter-chip.empty {
+/* Not `.empty`: that is the <Empty> placeholder's class (column layout, 48px padding, big icon) */
+.waiter-chip.no-waiter {
   border-style: dashed;
   background: var(--color-surface);
 }

@@ -55,7 +55,7 @@ async function getRestaurantOr404(id: string) {
 
 async function assertRestaurantNameFree(name: string, exceptId?: Types.ObjectId) {
   const clash = await RestaurantModel.exists({ nameKey: nameKey(name), ...(exceptId && { _id: { $ne: exceptId } }) });
-  if (clash) throw conflict('A restaurant with this name already exists', 'DUPLICATE');
+  if (clash) throw conflict('Restaurant with this name already exists.', 'DUPLICATE');
 }
 
 /** "Keda Kari Virundhu" → "KKV": the bill code of a new restaurant (MAIN when the name has no letters). */
@@ -469,15 +469,20 @@ async function kitchenStationFor(role: string, branchId: Types.ObjectId, station
 }
 
 export async function createRestaurantAdmin(actor: AuthUser, input: UserCreateInput) {
-  if (await UserModel.exists({ email: input.email })) throw conflict('This email is already in use', 'DUPLICATE');
+  const emailTaken = () => conflict('An employee with this email already exists.', 'DUPLICATE');
+  if (await UserModel.exists({ email: input.email })) throw emailTaken();
   const assignments = await resolveAssignments(input.branchIds);
+  const kitchenStationId = await kitchenStationFor(input.role, assignments.branchIds[0], input.kitchenStationId);
   const user = await UserModel.create({
     name: input.name,
     email: input.email,
     passwordHash: await hashPassword(input.password),
     role: input.role,
     ...assignments,
-    kitchenStationId: await kitchenStationFor(input.role, assignments.branchIds[0], input.kitchenStationId),
+    kitchenStationId,
+  }).catch((err: unknown) => {
+    // Two adds of the same email at once: the unique index stops the second one.
+    throw (err as { code?: number }).code === 11000 ? emailTaken() : err;
   });
   await audit(actor, {
     action: `${accountKind(input.role).action}_CREATED`,

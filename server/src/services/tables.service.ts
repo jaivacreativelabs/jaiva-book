@@ -213,12 +213,25 @@ export async function seatsInUse(tableId: Types.ObjectId, exceptDraftId?: Types.
   return drafts.reduce((a, d) => a + d.guestCount, 0);
 }
 
+/**
+ * A table label is used once in the whole restaurant (KOTs and bills name the table only), so a
+ * label on another floor is refused too, saying which floor has it.
+ */
+async function assertLabelFree(scope: BranchScope, labelKey: string, floor: string, exceptId?: Types.ObjectId) {
+  const clash = await TableModel.findOne({ branchId: scope.branch._id, labelKey, ...(exceptId && { _id: { $ne: exceptId } }) })
+    .select('floor')
+    .lean<{ floor: string }>();
+  if (!clash) return;
+  throw conflict(
+    nameKey(clash.floor) === nameKey(floor) ? 'Table label already exists on this floor.' : `Table label already exists on ${clash.floor}.`,
+    'DUPLICATE',
+  );
+}
+
 export async function createTable(actor: AuthUser, scope: BranchScope, input: TableCreateInput) {
   assertAdmin(actor);
   const labelKey = nameKey(input.label);
-  if (await TableModel.exists({ branchId: scope.branch._id, labelKey })) {
-    throw conflict(`Table ${input.label} already exists`, 'DUPLICATE');
-  }
+  await assertLabelFree(scope, labelKey, input.floor);
   const table = await TableModel.create({
     ...input,
     label: input.label.toUpperCase(),
@@ -242,9 +255,7 @@ export async function updateTable(actor: AuthUser, scope: BranchScope, id: strin
   const table = await getTableOr404(scope, id);
   if (input.label && nameKey(input.label) !== table.labelKey) {
     const labelKey = nameKey(input.label);
-    if (await TableModel.exists({ branchId: scope.branch._id, labelKey, _id: { $ne: table._id } })) {
-      throw conflict(`Table ${input.label} already exists`, 'DUPLICATE');
-    }
+    await assertLabelFree(scope, labelKey, input.floor ?? table.floor, table._id);
     table.labelKey = labelKey;
     input = { ...input, label: input.label.toUpperCase() };
   }

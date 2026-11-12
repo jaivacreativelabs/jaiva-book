@@ -139,7 +139,7 @@ function TableWaiterButton({ table }: { table: TableDTO }) {
   }
   return (
     <>
-      <button type="button" className={cx('waiter-chip as-button', !table.waiter && 'empty')} onClick={() => setOpen(true)} title="Choose the waiter for this table">
+      <button type="button" className={cx('waiter-chip as-button', !table.waiter && 'no-waiter')} onClick={() => setOpen(true)} title="Choose the waiter for this table">
         <UserRound size={15} /> <span>{table.waiter?.name ?? 'Assign waiter'}</span> <ChevronDown size={14} />
       </button>
       {open && <WaiterPicker table={table} onClose={() => setOpen(false)} />}

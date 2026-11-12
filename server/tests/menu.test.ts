@@ -40,8 +40,14 @@ describe('categories', () => {
   });
 
   it('rejects duplicates in the same scope and against shared names', async () => {
-    expect((await w.adminA1.post('/api/v1/menu/categories', { name: 'specials' })).status).toBe(409);
+    const dup = await w.adminA1.post('/api/v1/menu/categories', { name: 'specials' });
+    expect(dup.status).toBe(409);
+    expect(dup.body.error.message).toBe('Category already exists.');
     expect((await w.adminA1.post('/api/v1/menu/categories', { name: 'MAIN' })).status).toBe(409);
+    // The Super Admin's main-menu (global) category: same message.
+    const global = await w.sa.post(`/api/v1/menu/categories?restaurantId=${w.restaurantA}`, { name: '  main ' });
+    expect(global.status).toBe(409);
+    expect(global.body.error.message).toBe('Category already exists.');
     // A different branch may reuse a branch-only name.
     expect((await w.adminA2.post('/api/v1/menu/categories', { name: 'Specials' })).status).toBe(201);
   });

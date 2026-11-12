@@ -45,6 +45,13 @@ describe('Super Admin – restaurants and branches', () => {
   it('rejects duplicate restaurant names (case-insensitive)', async () => {
     const res = await w.sa.post('/api/v1/admin/restaurants', { name: 'restaurant a' });
     expect(res.status).toBe(409);
+    expect(res.body.error.message).toBe('Restaurant with this name already exists.');
+    // Extra spaces count as the same name; renaming another restaurant to it is refused too.
+    const spaced = await w.sa.post('/api/v1/admin/restaurants', { name: '  Restaurant   A ' });
+    expect(spaced.status).toBe(409);
+    const rename = await w.sa.patch(`/api/v1/admin/restaurants/${w.restaurantB}`, { name: 'RESTAURANT A' });
+    expect(rename.status).toBe(409);
+    expect(rename.body.error.message).toBe('Restaurant with this name already exists.');
   });
 
   it('rejects duplicate branch codes in the same restaurant', async () => {
@@ -142,7 +149,13 @@ describe('Super Admin – Restaurant Admin accounts', () => {
   });
 
   it('rejects duplicate emails and unknown branches', async () => {
-    expect((await w.sa.post('/api/v1/admin/users', { name: 'D', email: 'a1@test.local', password: PASSWORD, branchIds: [w.branchA1] })).status).toBe(409);
+    const dup = await w.sa.post('/api/v1/admin/users', { name: 'D', email: 'a1@test.local', password: PASSWORD, branchIds: [w.branchA1] });
+    expect(dup.status).toBe(409);
+    expect(dup.body.error.message).toBe('An employee with this email already exists.');
+    // Capitals and spaces do not make it a different email; any role (here a waiter) is refused.
+    const upper = await w.sa.post('/api/v1/admin/users', { name: 'D', email: '  A1@Test.Local ', password: PASSWORD, branchIds: [w.branchA1], role: 'WAITER' });
+    expect(upper.status).toBe(409);
+    expect(upper.body.error.message).toBe('An employee with this email already exists.');
     expect(
       (await w.sa.post('/api/v1/admin/users', { name: 'D', email: 'd@test.local', password: PASSWORD, branchIds: ['0123456789abcdef01234567'] })).status,
     ).toBe(400);
