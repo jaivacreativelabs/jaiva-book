@@ -46,7 +46,7 @@ export function AdminForm({ initial, restrictTo, onClose }: { initial?: UserDTO;
   // Older accounts may still list several branches; editing keeps only one.
   const [branchId, setBranchId] = useState<string | null>(initial?.branchIds[0] ?? null);
   const [role, setRole] = useState<StaffRole>(initial?.role === 'KITCHEN' || initial?.role === 'WAITER' ? initial.role : 'RESTAURANT_ADMIN');
-  const kind = role === 'KITCHEN' ? 'Kitchen login' : role === 'WAITER' ? 'Waiter login' : 'Restaurant Admin';
+  const kind = role === 'KITCHEN' ? 'Kitchen login' : role === 'WAITER' ? 'Waiter login' : 'Cashier';
   // Kitchen logins of a restaurant with kitchen counters can work one counter ('' → every counter).
   const [stationId, setStationId] = useState(initial?.kitchenStationId ?? '');
   const stations = (useAllBranches().data ?? []).find((b) => b.id === branchId)?.kitchenStations ?? [];
@@ -62,7 +62,7 @@ export function AdminForm({ initial, restrictTo, onClose }: { initial?: UserDTO;
     }
     if (!branchId)
       return setError(
-        role === 'KITCHEN' ? 'Choose the restaurant whose kitchen this login shows' : role === 'WAITER' ? 'Choose the restaurant this waiter works in' : 'Choose the restaurant this admin manages',
+        role === 'KITCHEN' ? 'Choose the restaurant whose kitchen this login shows' : role === 'WAITER' ? 'Choose the restaurant this waiter works in' : 'Choose the restaurant this cashier works in',
       );
     const branchIds = [branchId];
     setBusy(true);
@@ -88,7 +88,7 @@ export function AdminForm({ initial, restrictTo, onClose }: { initial?: UserDTO;
             ? 'A Kitchen login only sees the Kitchen Display of one restaurant – no bills, sales or prices'
             : role === 'WAITER'
               ? 'A Waiter login (one per waiter) only sees food the kitchen marked Ready in one restaurant, and marks it Served'
-              : 'A Restaurant Admin runs one restaurant – its billing, tables, menu and transactions'}
+              : 'A Cashier runs one restaurant – its billing, tables, menu and transactions'}
         </p>
         {!initial && (
           <div className="field">
@@ -96,7 +96,7 @@ export function AdminForm({ initial, restrictTo, onClose }: { initial?: UserDTO;
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }} role="radiogroup" aria-label="Role">
               {(
                 [
-                  ['RESTAURANT_ADMIN', 'Admin', Store],
+                  ['RESTAURANT_ADMIN', 'Cashier', Store],
                   ['KITCHEN', 'Kitchen', ChefHat],
                   ['WAITER', 'Waiter', ConciergeBell],
                 ] as const
@@ -139,7 +139,7 @@ export function AdminForm({ initial, restrictTo, onClose }: { initial?: UserDTO;
         )}
         {error && <div className="alert alert-danger">{error}</div>}
         <button className="btn btn-primary btn-lg btn-block" disabled={busy}>
-          {busy ? <Spinner /> : <CirclePlus />} {initial ? 'Save Changes' : role === 'KITCHEN' ? 'Create Kitchen Login' : role === 'WAITER' ? 'Create Waiter Login' : 'Create Admin'}
+          {busy ? <Spinner /> : <CirclePlus />} {initial ? 'Save Changes' : role === 'KITCHEN' ? 'Create Kitchen Login' : role === 'WAITER' ? 'Create Waiter Login' : 'Create Cashier'}
         </button>
       </form>
     </Modal>
@@ -180,7 +180,7 @@ function ResetPasswordModal({ user, onClose }: { user: UserDTO; onClose: () => v
 
 /** The employee list's sections, in this order. */
 const EMPLOYEE_GROUPS: { key: UserDTO['role']; label: string; Icon: typeof Store }[] = [
-  { key: 'RESTAURANT_ADMIN', label: 'Admins', Icon: Store },
+  { key: 'RESTAURANT_ADMIN', label: 'Cashiers', Icon: Store },
   { key: 'KITCHEN', label: 'Kitchen', Icon: ChefHat },
   { key: 'WAITER', label: 'Waiters', Icon: ConciergeBell },
 ];
